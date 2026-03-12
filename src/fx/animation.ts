@@ -124,7 +124,7 @@ export class FXManager {
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.font = `bold ${Math.round(22 * scale)}px monospace`;
+    ctx.font = `700 ${Math.round(24 * scale)}px Bangers, cursive`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(fx.text ?? '', fx.x + 2, fx.y + yOff + 2);
@@ -143,7 +143,7 @@ export class FXManager {
 
     ctx.globalAlpha = Math.max(0, alpha * 0.9);
     ctx.fillStyle = fx.color;
-    ctx.font = `bold 14px monospace`;
+    ctx.font = `600 14px Fredoka, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`+${fx.value ?? 0}`, fx.x, fx.y + yOff);

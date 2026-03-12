@@ -30,6 +30,8 @@ const COLOR_DARK: Record<CandyColor, string> = {
 };
 
 const VISUAL_LERP_SPEED = 0.015;
+const F_UI = 'Fredoka, sans-serif';
+const F_ACTION = 'Bangers, cursive';
 
 // Ambient background particles
 interface BgParticle {
@@ -597,7 +599,7 @@ export class Canvas2DRenderer implements Renderer {
 
     // Score with subtle shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.font = `700 ${fontSize}px ${F_UI}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.fillText(`Score: ${state.score}`, boardX + 9, HUD_HEIGHT / 2 - 7);
@@ -605,7 +607,7 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillText(`Score: ${state.score}`, boardX + 8, HUD_HEIGHT / 2 - 8);
 
     // Stage + phase
-    ctx.font = `${fontSize * 0.8}px monospace`;
+    ctx.font = `400 ${fontSize * 0.8}px ${F_UI}`;
     ctx.fillStyle = state.stagePhase === 'pressure' ? '#ff8844' :
                     state.stagePhase === 'break' ? '#44dd44' : '#888888';
     ctx.fillText(`Stage ${state.stage + 1} \u00b7 ${state.stagePhase}`, boardX + 8, HUD_HEIGHT / 2 + 10);
@@ -642,11 +644,11 @@ export class Canvas2DRenderer implements Renderer {
     if (state.abilityReady) {
       const pulse = 0.7 + Math.sin(this.dangerPulse * 4) * 0.3;
       ctx.fillStyle = `rgba(68,255,170,${pulse})`;
-      ctx.font = `bold ${fontSize * 0.7}px monospace`;
+      ctx.font = `700 ${fontSize * 0.7}px ${F_ACTION}`;
       ctx.fillText('BURST!', meterX, meterY - 10);
     } else {
       ctx.fillStyle = '#666666';
-      ctx.font = `${fontSize * 0.6}px monospace`;
+      ctx.font = `400 ${fontSize * 0.6}px ${F_UI}`;
       ctx.fillText('ability', meterX, meterY - 10);
     }
 
@@ -660,7 +662,7 @@ export class Canvas2DRenderer implements Renderer {
       this.roundRectFill(ctx, previewX - 4, previewY - 4, ps * 2 + 14, ps * 2 + 14, 6);
 
       ctx.fillStyle = '#555555';
-      ctx.font = `${fontSize * 0.6}px monospace`;
+      ctx.font = `400 ${fontSize * 0.6}px ${F_UI}`;
       ctx.textAlign = 'left';
       ctx.fillText('NEXT', previewX - 4, previewY + ps * 2 + 16);
 
@@ -686,21 +688,21 @@ export class Canvas2DRenderer implements Renderer {
     const cy = cam.logicalH / 2;
 
     ctx.fillStyle = '#ff4444';
-    ctx.font = `bold ${Math.max(28, cellSize * 0.9)}px monospace`;
+    ctx.font = `700 ${Math.max(32, cellSize * 1.0)}px ${F_ACTION}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('GAME OVER', cx, cy - 50);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.max(18, cellSize * 0.5)}px monospace`;
+    ctx.font = `700 ${Math.max(20, cellSize * 0.55)}px ${F_UI}`;
     ctx.fillText(`${state.score}`, cx, cy);
 
     ctx.fillStyle = '#888888';
-    ctx.font = `${Math.max(13, cellSize * 0.3)}px monospace`;
+    ctx.font = `400 ${Math.max(13, cellSize * 0.3)}px ${F_UI}`;
     ctx.fillText(`Stage ${state.stage + 1}`, cx, cy + 30);
 
     ctx.fillStyle = '#aaaaaa';
-    ctx.font = `${Math.max(14, cellSize * 0.35)}px monospace`;
+    ctx.font = `400 ${Math.max(14, cellSize * 0.35)}px ${F_UI}`;
     ctx.fillText('Tap to restart', cx, cy + 65);
     ctx.textAlign = 'left';
   }

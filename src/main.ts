@@ -426,15 +426,15 @@ function drawGameOverStats(ctx: CanvasRenderingContext2D, cam: ReturnType<typeof
   ctx.textBaseline = 'middle';
 
   ctx.fillStyle = '#ff4444';
-  ctx.font = `bold ${s * 1.5}px monospace`;
+  ctx.font = `700 ${s * 1.8}px Bangers, cursive`;
   ctx.fillText('GAME OVER', cx, cy - s * 4);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${s * 1.2}px monospace`;
+  ctx.font = `700 ${s * 1.2}px Fredoka, sans-serif`;
   ctx.fillText(`${gs.score}`, cx, cy - s * 2);
 
   ctx.fillStyle = '#aaaaaa';
-  ctx.font = `${s * 0.7}px monospace`;
+  ctx.font = `400 ${s * 0.7}px Fredoka, sans-serif`;
 
   const time = Math.floor(gs.playTimeMs / 1000);
   const mins = Math.floor(time / 60);
@@ -445,12 +445,12 @@ function drawGameOverStats(ctx: CanvasRenderingContext2D, cam: ReturnType<typeof
 
   if (gs.score >= save.highScore && gs.score > 0) {
     ctx.fillStyle = '#ffdd44';
-    ctx.font = `bold ${s * 0.8}px monospace`;
+    ctx.font = `700 ${s * 0.9}px Bangers, cursive`;
     ctx.fillText('NEW HIGH SCORE!', cx, cy + s * 2.5);
   }
 
   ctx.fillStyle = '#666666';
-  ctx.font = `${s * 0.65}px monospace`;
+  ctx.font = `400 ${s * 0.65}px Fredoka, sans-serif`;
   ctx.fillText('Tap to continue', cx, cy + s * 4);
 
   ctx.textAlign = 'left';

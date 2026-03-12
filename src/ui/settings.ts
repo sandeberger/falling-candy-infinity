@@ -1,5 +1,8 @@
 import type { SaveData } from '../save/persistence.js';
 
+const F_UI = 'Fredoka, sans-serif';
+const F_ACTION = 'Bangers, cursive';
+
 export interface SettingsButton {
   label: string;
   key: keyof SaveData;
@@ -36,7 +39,7 @@ export function drawSettings(
 
   // Title
   ctx.fillStyle = '#ffdd44';
-  ctx.font = `bold ${s * 1.4}px monospace`;
+  ctx.font = `700 ${s * 1.4}px ${F_ACTION}`;
   ctx.fillText('SETTINGS', cx, h * 0.15);
 
   buttons = [];
@@ -65,7 +68,7 @@ export function drawSettings(
 
     // Label
     ctx.fillStyle = '#ffffff';
-    ctx.font = `${s * 0.75}px monospace`;
+    ctx.font = `400 ${s * 0.75}px ${F_UI}`;
     ctx.fillText(`${toggle.label}: ${enabled ? 'ON' : 'OFF'}`, cx, y);
 
     buttons.push({ label: toggle.label, key: toggle.key, x: bx, y: by, w: btnW, h: btnH });
@@ -86,7 +89,7 @@ export function drawSettings(
     ctx.stroke();
 
     ctx.fillStyle = '#4488ff';
-    ctx.font = `bold ${s * 0.75}px monospace`;
+    ctx.font = `700 ${s * 0.75}px ${F_UI}`;
     ctx.fillText('INSTALL APP', cx, y);
 
     // Use 'installPromptDismissed' key as a sentinel for install button
@@ -96,7 +99,7 @@ export function drawSettings(
 
   // Close hint
   ctx.fillStyle = '#666666';
-  ctx.font = `${s * 0.6}px monospace`;
+  ctx.font = `400 ${s * 0.6}px ${F_UI}`;
   ctx.fillText('Tap outside or press Esc to close', cx, h * 0.88);
 
   ctx.textAlign = 'left';
