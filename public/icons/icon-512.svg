@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="80" fill="#1a0a2e"/>
+  <g transform="translate(256,290)">
+    <!-- Red candy -->
+    <rect x="-145" y="-100" width="75" height="75" rx="10" fill="#ff4444"/>
+    <!-- Blue candy -->
+    <rect x="-38" y="-100" width="75" height="75" rx="10" fill="#4488ff"/>
+    <rect x="70" y="-100" width="75" height="75" rx="10" fill="#44dd44"/>
+    <!-- Yellow candy -->
+    <rect x="-90" y="0" width="75" height="75" rx="10" fill="#ffdd44"/>
+    <!-- Purple candy -->
+    <rect x="17" y="0" width="75" height="75" rx="10" fill="#cc44ff"/>
+  </g>
+  <text x="256" y="140" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="48" fill="#ffdd44">CANDY</text>
+  <text x="256" y="186" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="40" fill="#ffffff">\u221e</text>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable: safe zone is inner 80%, so add extra padding -->
+  <rect width="512" height="512" fill="#1a0a2e"/>
+  <g transform="translate(256,280)">
+    <rect x="-120" y="-85" width="65" height="65" rx="8" fill="#ff4444"/>
+    <rect x="-30" y="-85" width="65" height="65" rx="8" fill="#4488ff"/>
+    <rect x="60" y="-85" width="65" height="65" rx="8" fill="#44dd44"/>
+    <rect x="-75" y="0" width="65" height="65" rx="8" fill="#ffdd44"/>
+    <rect x="15" y="0" width="65" height="65" rx="8" fill="#cc44ff"/>
+  </g>
+  <text x="256" y="145" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="42" fill="#ffdd44">CANDY</text>
+  <text x="256" y="185" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="36" fill="#ffffff">\u221e</text>
+</svg>
