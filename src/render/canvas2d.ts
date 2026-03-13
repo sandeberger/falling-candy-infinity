@@ -318,11 +318,7 @@ export class Canvas2DRenderer implements Renderer {
     if (!demoMode) {
       // HUD (outside shake)
       this.drawHUD(ctx, state, cam);
-
-      // Game over overlay
-      if (state.appState === AppState.GAME_OVER) {
-        this.drawGameOver(ctx, state, cam);
-      }
+      // Game over overlay is drawn by main.ts (drawGameOverStats)
     }
   }
 
