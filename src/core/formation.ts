@@ -4,11 +4,20 @@ import { CandyColor, CandyType, createCandy, type Candy, type Formation, type Ga
 import { getCell } from './board.js';
 import { getDifficulty } from './difficulty.js';
 
-const FORMATION_TEMPLATES = [
+const PAIR_TEMPLATES = [
   // PAIR_V
   [{ dRow: 0, dCol: 0 }, { dRow: 1, dCol: 0 }],
   // PAIR_H
   [{ dRow: 0, dCol: 0 }, { dRow: 0, dCol: 1 }],
+];
+
+const TRIO_TEMPLATES = [
+  // LINE_3 (vertical line, rotates to horizontal)
+  [{ dRow: -1, dCol: 0 }, { dRow: 0, dCol: 0 }, { dRow: 1, dCol: 0 }],
+  // L_SHAPE (L pointing right)
+  [{ dRow: -1, dCol: 0 }, { dRow: 0, dCol: 0 }, { dRow: 0, dCol: 1 }],
+  // J_SHAPE (L pointing left, mirror of L)
+  [{ dRow: -1, dCol: 0 }, { dRow: 0, dCol: 0 }, { dRow: 0, dCol: -1 }],
 ];
 
 function applyRotation(dRow: number, dCol: number, rotation: number): [number, number] {
@@ -41,30 +50,92 @@ export function canPlace(board: (Candy | null)[], formation: Formation): boolean
   return true;
 }
 
-function pickCandyType(rng: () => number, stage: number): CandyType {
+function pickCandyType(rng: () => number, stage: number, dangerLevel: number = 0): CandyType {
   const diff = getDifficulty(stage);
+
+  // At high danger, suppress negative specials (bombs, locked) and boost prism chance
+  const dangerSuppress = dangerLevel > 0.5 ? Math.min(0.8, (dangerLevel - 0.5) * 1.6) : 0;
+  const effectiveBombRate = diff.bombRate * (1 - dangerSuppress);
+  const effectiveLockedRate = diff.lockedRate * (1 - dangerSuppress);
+  const effectiveSpecialRate = diff.specialRate * (1 - dangerSuppress * 0.5);
+  const effectiveStickyRate = diff.stickyRate * (1 - dangerSuppress * 0.3);
+
   const roll = rng();
 
-  if (roll < diff.bombRate) return CandyType.BOMB;
-  if (roll < diff.bombRate + diff.lockedRate) return CandyType.LOCKED;
-  if (roll < diff.specialRate) {
-    // Pick from special types (not bomb/locked, handled above)
+  if (roll < effectiveBombRate) return CandyType.BOMB;
+  if (roll < effectiveBombRate + effectiveLockedRate) return CandyType.LOCKED;
+  // Milestone sticky override — checked before general special pool
+  if (effectiveStickyRate > 0 && roll < effectiveBombRate + effectiveLockedRate + effectiveStickyRate) {
+    return CandyType.STICKY;
+  }
+  if (roll < effectiveSpecialRate) {
     const specials = [CandyType.JELLY, CandyType.STICKY, CandyType.CRACKED];
-    // Prism is rare
-    if (rng() < 0.15) return CandyType.PRISM;
+    const prismChance = 0.15 + dangerSuppress * 0.25;
+    if (rng() < prismChance) return CandyType.PRISM;
     return specials[randomInt(rng, 0, specials.length - 1)];
   }
 
   return CandyType.STANDARD;
 }
 
+/**
+ * Pick a color biased toward what's already on the board (mercy spawning).
+ * At high danger, strongly prefer colors present in the top rows to
+ * give the player matchable pieces. The bias is subtle at moderate danger
+ * and strong near game over.
+ */
+function pickMercyColor(rng: () => number, colorCount: number, state: GameState): CandyColor {
+  const danger = state.dangerLevel;
+
+  // Below 0.4 danger: fully random
+  if (danger < 0.4) {
+    return randomInt(rng, 0, colorCount - 1) as CandyColor;
+  }
+
+  // Count colors in the top 6 visible rows (rows SPAWN_ROWS to SPAWN_ROWS+5)
+  const colorCounts = new Array(colorCount).fill(0);
+  for (let row = SPAWN_ROWS; row < SPAWN_ROWS + 6; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const candy = getCell(state.board, row, col);
+      if (candy && candy.color < colorCount) {
+        colorCounts[candy.color]++;
+      }
+    }
+  }
+
+  const total = colorCounts.reduce((a: number, b: number) => a + b, 0);
+  if (total === 0) {
+    return randomInt(rng, 0, colorCount - 1) as CandyColor;
+  }
+
+  // Mercy strength: 0 at danger=0.4, 0.7 at danger=1.0
+  const mercyStrength = Math.min(0.7, (danger - 0.4) / 0.6 * 0.7);
+
+  // Blend between uniform distribution and board-weighted distribution
+  if (rng() < mercyStrength) {
+    // Weighted pick — favor colors that exist on the board
+    let roll = rng() * total;
+    for (let c = 0; c < colorCount; c++) {
+      roll -= colorCounts[c];
+      if (roll <= 0) return c as CandyColor;
+    }
+    return (colorCount - 1) as CandyColor;
+  }
+
+  return randomInt(rng, 0, colorCount - 1) as CandyColor;
+}
+
 export function spawnFormation(rng: () => number, colorCount: number, state: GameState): Formation {
-  const templateIdx = randomInt(rng, 0, FORMATION_TEMPLATES.length - 1);
-  const template = FORMATION_TEMPLATES[templateIdx];
+  // 3-piece formations appear from stage 3+, increasing chance with stage
+  const trioChance = state.stage >= 3 ? Math.min(0.5, (state.stage - 2) * 0.1) : 0;
+  const useTrio = rng() < trioChance;
+  const pool = useTrio ? TRIO_TEMPLATES : PAIR_TEMPLATES;
+  const templateIdx = randomInt(rng, 0, pool.length - 1);
+  const template = pool[templateIdx];
 
   const cells = template.map((offset) => {
-    const color = randomInt(rng, 0, colorCount - 1) as CandyColor;
-    const type = pickCandyType(rng, state.stage);
+    const color = pickMercyColor(rng, colorCount, state);
+    const type = pickCandyType(rng, state.stage, state.dangerLevel);
     return {
       dRow: offset.dRow,
       dCol: offset.dCol,
@@ -84,13 +155,18 @@ export function rotateFormation(board: (Candy | null)[], formation: Formation): 
   const nextRotation = ((formation.rotation + 1) % 4) as 0 | 1 | 2 | 3;
   const rotated: Formation = { ...formation, rotation: nextRotation };
 
+  // Try no kick first
   if (canPlace(board, rotated)) return rotated;
 
-  const kickRight: Formation = { ...rotated, pivotCol: rotated.pivotCol + 1 };
-  if (canPlace(board, kickRight)) return kickRight;
+  // Wall kicks: try horizontal shifts ±1, ±2
+  for (const dx of [1, -1, 2, -2]) {
+    const kicked: Formation = { ...rotated, pivotCol: rotated.pivotCol + dx };
+    if (canPlace(board, kicked)) return kicked;
+  }
 
-  const kickLeft: Formation = { ...rotated, pivotCol: rotated.pivotCol - 1 };
-  if (canPlace(board, kickLeft)) return kickLeft;
+  // Floor kick: try shifting up by 1 (for pieces near bottom)
+  const kickUp: Formation = { ...rotated, pivotRow: rotated.pivotRow - 1 };
+  if (canPlace(board, kickUp)) return kickUp;
 
   return formation;
 }

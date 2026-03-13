@@ -9,7 +9,7 @@ import { AudioManager } from './audio/audio-manager.js';
 import { MusicEngine } from './audio/music.js';
 import { FXManager } from './fx/animation.js';
 import { loadSave, writeSave, updateHighScores, type SaveData } from './save/persistence.js';
-import { drawMenu, drawOnboarding } from './ui/menu.js';
+import { drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner } from './ui/menu.js';
 import { drawSettings, hitTestSettings } from './ui/settings.js';
 import { hapticDrop, hapticMatch, hapticChain, hapticBomb, hapticAbility, hapticGameOver, setHapticsEnabled } from './input/haptics.js';
 import { registerSW, setupInstallPrompt, canInstall, triggerInstall } from './pwa/install-prompt.js';
@@ -38,12 +38,16 @@ music.setEnabled(save.musicEnabled);
 setHapticsEnabled(save.hapticsEnabled);
 
 let state: GameState = createInitialGameState(Date.now());
-state.appState = AppState.MENU;
+state.appState = AppState.BOOT;
 
 let menuTime = 0;
+let introTime = 0;
+let introStingPlayed = false;
 let onboardingAge = -1;
 let gameOverScoreSaved = false;
 let settingsOpen = false;
+let installBannerTime = 0;
+let showInstallBanner = false;
 
 // --- Demo mode state ---
 let demoState: GameState = createInitialGameState(Date.now() + 1);
@@ -53,6 +57,8 @@ const demoFx = new FXManager();
 
 function resetDemo(): void {
   demoState = createInitialGameState(Date.now());
+  demoState.stage = 20; // start high for faster, more interesting demo
+  demoState.colorCount = 5;
   demoInput.clear();
   demoAccumulator = 0;
   demoFx.clear();
@@ -73,6 +79,15 @@ const cleanupKeyboard = setupKeyboard(inputBuffer, () => state);
 window.addEventListener('keydown', (e) => {
   if (e.key === 'a' || e.key === 'A') {
     inputBuffer.push(InputAction.ABILITY);
+  }
+  if (state.appState === AppState.BOOT) {
+    if (!introStingPlayed) {
+      audio.introSting();
+      introStingPlayed = true;
+    }
+    state.appState = AppState.MENU;
+    menuTime = 0;
+    return;
   }
   if (state.appState === AppState.MENU) {
     if (e.key === 's' || e.key === 'S') {
@@ -108,7 +123,34 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
+  if (state.appState === AppState.BOOT) {
+    // Skip intro on tap — play sting on first interaction (unlocks AudioContext)
+    if (!introStingPlayed) {
+      audio.introSting();
+      introStingPlayed = true;
+    }
+    state.appState = AppState.MENU;
+    menuTime = 0;
+    return;
+  }
   if (state.appState === AppState.MENU) {
+    // Install banner interaction
+    if (showInstallBanner) {
+      const hit = hitTestInstallBanner(px, py);
+      if (hit === 'install') {
+        triggerInstall();
+        installAvailable = false;
+        showInstallBanner = false;
+        return;
+      }
+      if (hit === 'dismiss') {
+        save.installPromptDismissed = true;
+        writeSave(save);
+        showInstallBanner = false;
+        return;
+      }
+    }
+
     const gearSize = Math.min(30, cam.logicalW * 0.07);
     if (px >= cam.logicalW - gearSize - 10 && py <= gearSize + 10) {
       settingsOpen = true;
@@ -116,6 +158,12 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     startGame();
     return;
+  }
+  if (state.appState === AppState.PLAYING) {
+    if (renderer.hitTestAbilityButton(px, py)) {
+      inputBuffer.push(InputAction.ABILITY);
+      return;
+    }
   }
   if (state.appState === AppState.GAME_OVER) {
     state.appState = AppState.MENU;
@@ -194,6 +242,10 @@ function processEvents(): void {
         if (event.row !== undefined && event.col !== undefined) {
           const pos = renderer.cellToScreen(event.row, event.col);
           fx.addSquash(pos.x, pos.y, 'rgba(255,255,255,0.6)');
+          // Precision drop bonus popup
+          if (event.count && event.count > 0) {
+            fx.addScorePop(pos.x, pos.y - 15, event.count);
+          }
         }
         break;
       case 'chain':
@@ -277,6 +329,54 @@ function processEvents(): void {
       case 'danger':
         audio.danger();
         break;
+      case 'phase_change':
+        if (event.text === 'pressure') {
+          audio.phasePressure();
+          renderer.triggerPhaseFlash('pressure');
+          {
+            const cam = renderer.getCamera();
+            fx.addComboText(cam.logicalW / 2, cam.logicalH / 2 - 20, 'PRESSURE!');
+          }
+        } else if (event.text === 'break') {
+          audio.phaseBreak();
+          renderer.triggerPhaseFlash('break');
+          {
+            const cam = renderer.getCamera();
+            fx.addComboText(cam.logicalW / 2, cam.logicalH / 2 - 20, 'BREAK!');
+          }
+        }
+        break;
+      case 'milestone':
+        // Dramatic milestone announcement
+        audio.chain(5); // strong chain sound as fanfare
+        hapticBomb();
+        {
+          const cam = renderer.getCamera();
+          const milestoneColors: Record<string, string> = {
+            'BOMB RUSH': '#ff6600',
+            'LOCKDOWN': '#8888ff',
+            'STICKY SWAMP': '#ff88cc',
+            'CRACKED GAUNTLET': '#ffaa44',
+          };
+          const color = milestoneColors[event.text ?? ''] ?? '#ff4444';
+          fx.addComboText(cam.logicalW / 2, cam.logicalH / 2 + 20, event.text ?? 'MILESTONE');
+          state.screenShake = 300;
+          for (let i = 0; i < 12; i++) {
+            fx.addSparkle(
+              cam.logicalW / 2 + (Math.random() - 0.5) * 160,
+              cam.logicalH / 2 + (Math.random() - 0.5) * 100,
+              color,
+            );
+          }
+          for (let i = 0; i < 4; i++) {
+            fx.addPop(
+              cam.logicalW / 2 + (Math.random() - 0.5) * 100,
+              cam.logicalH / 2 + 20 + (Math.random() - 0.5) * 60,
+              color,
+            );
+          }
+        }
+        break;
     }
   }
 }
@@ -320,7 +420,21 @@ function loop(now: number): void {
   const cam = renderer.getCamera();
   const ctx = (canvas.getContext('2d'))!;
 
-  if (state.appState === AppState.MENU) {
+  if (state.appState === AppState.BOOT) {
+    introTime += frameTime;
+    const dpr = cam.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const still = drawIntro(ctx, cam.logicalW, cam.logicalH, introTime);
+    if (!still) {
+      // Intro finished — play sting and transition to menu
+      if (!introStingPlayed) {
+        audio.introSting();
+        introStingPlayed = true;
+      }
+      state.appState = AppState.MENU;
+      menuTime = 0;
+    }
+  } else if (state.appState === AppState.MENU) {
     menuTime += frameTime;
 
     // --- Run demo simulation in background ---
@@ -358,12 +472,34 @@ function loop(now: number): void {
     // Gear icon
     drawGearIcon(ctx, cam.logicalW, cam.logicalH);
 
+    // Install banner — show after 3+ runs, if installable, not dismissed
+    if (installAvailable && canInstall() && !save.installPromptDismissed && save.totalRuns >= 3 && !settingsOpen) {
+      if (!showInstallBanner) {
+        showInstallBanner = true;
+        installBannerTime = 0;
+      }
+      installBannerTime += frameTime;
+      drawInstallBanner(ctx, cam.logicalW, cam.logicalH, installBannerTime);
+    } else {
+      showInstallBanner = false;
+    }
+
     // Settings overlay
     if (settingsOpen) {
       drawSettings(ctx, cam.logicalW, cam.logicalH, save, installAvailable && canInstall());
     }
   } else if (state.appState === AppState.PLAYING || state.appState === AppState.GAME_OVER) {
-    accumulator += frameTime;
+    // Apply hit stop time dilation
+    let effectiveFrameTime = frameTime;
+    if (state.hitStopTimer > 0) {
+      effectiveFrameTime = frameTime * state.hitStopScale;
+      state.hitStopTimer -= frameTime; // decay in real-time, not dilated
+      if (state.hitStopTimer <= 0) {
+        state.hitStopTimer = 0;
+        state.hitStopScale = 1.0;
+      }
+    }
+    accumulator += effectiveFrameTime;
 
     while (accumulator >= SIM_DT) {
       if (state.appState === AppState.PLAYING) {

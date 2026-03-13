@@ -43,6 +43,10 @@ function makeState(): GameState {
     abilityReady: false,
     abilityTimer: 0,
     dangerLevel: 0,
+    reliefTimer: 0,
+    reliefMultiplier: 1.0,
+    hitStopTimer: 0,
+    hitStopScale: 1.0,
     maxChain: 0,
     playTimeMs: 0,
   };

@@ -1,5 +1,5 @@
-import { SIM_DT, LOCK_DELAY_MS, CLEAR_DURATION_MS, SOFT_DROP_MULTIPLIER, COLS, BOARD_SIZE, SPAWN_ROWS } from '../config.js';
-import { PlayState, AppState, InputAction, CandyColor, CandyType, type GameState, type GameEvent, type Formation } from './state.js';
+import { SIM_DT, LOCK_DELAY_MS, CLEAR_DURATION_MS, SOFT_DROP_MULTIPLIER, COLS, BOARD_SIZE, SPAWN_ROWS, TOTAL_ROWS } from '../config.js';
+import { PlayState, AppState, InputAction, CandyColor, CandyType, createCandy, type GameState, type GameEvent, type Formation } from './state.js';
 import { findMatches, removeMatchesWithEffects, applyGravity, explodeBomb, tickBombs, updateStickyBonds, calculateDangerLevel } from './board.js';
 import {
   spawnFormation,
@@ -12,7 +12,7 @@ import {
   canPlace,
   getAbsoluteCells,
 } from './formation.js';
-import { getDifficulty, getPhaseSpeed } from './difficulty.js';
+import { getDifficulty, getPhaseSpeed, getMilestone, getMilestoneName } from './difficulty.js';
 import type { InputBuffer } from '../input/buffer.js';
 
 function emit(state: GameState, event: GameEvent): void {
@@ -36,6 +36,23 @@ export function simulateTick(state: GameState, input: InputBuffer): void {
   state.dangerLevel = calculateDangerLevel(state.board);
   if (state.dangerLevel > 0.5 && prevDanger <= 0.5) {
     emit(state, { type: 'danger' });
+  }
+
+  // Decay post-chain relief
+  if (state.reliefTimer > 0) {
+    state.reliefTimer = Math.max(0, state.reliefTimer - dt);
+    // Ease back to normal: smooth ramp from reliefMultiplier → 1.0
+    const reliefT = state.reliefTimer > 0 ? state.reliefTimer / (state.reliefTimer + 500) : 0;
+    state.reliefMultiplier = 1.0 - (1.0 - state.reliefMultiplier) * reliefT;
+    if (state.reliefTimer <= 0) state.reliefMultiplier = 1.0;
+  }
+
+  // Survival bonus: every 10 seconds, award points based on stage
+  const prevSec = Math.floor((state.playTimeMs - dt) / 10000);
+  const currSec = Math.floor(state.playTimeMs / 10000);
+  if (currSec > prevSec) {
+    const survivalBonus = 5 * (state.stage + 1);
+    state.score += survivalBonus;
   }
 
   // Stage tick counter + phase transitions
@@ -81,14 +98,23 @@ function updateStagePhase(state: GameState): void {
     state.ticksInStage = 0;
     if (state.stagePhase === 'build') {
       state.stagePhase = 'pressure';
+      emit(state, { type: 'phase_change', text: 'pressure' });
     } else if (state.stagePhase === 'pressure') {
       state.stagePhase = 'break';
+      emit(state, { type: 'phase_change', text: 'break' });
     } else {
       state.stage++;
       state.stagePhase = 'build';
       const newDiff = getDifficulty(state.stage);
       state.colorCount = newDiff.colorCount;
       emit(state, { type: 'stage_up' });
+
+      // Check for milestone stage
+      const milestone = getMilestone(state.stage);
+      if (milestone) {
+        emit(state, { type: 'milestone', text: getMilestoneName(milestone) });
+        applyMilestoneBoard(state, milestone);
+      }
     }
     const d = getDifficulty(state.stage);
     state.fallSpeed = getPhaseSpeed(d.fallSpeed, state.stagePhase);
@@ -155,14 +181,23 @@ function processInput(state: GameState, input: InputBuffer): boolean {
         if (state.active !== prev) emit(state, { type: 'rotate' });
         break;
       }
-      case InputAction.HARD_DROP:
+      case InputAction.HARD_DROP: {
+        const startRow = state.active.pivotRow;
         state.active = hardDrop(state.board, state.active);
+        const rowsDropped = state.active.pivotRow - startRow;
+        // Precision drop bonus: 2 points per row skipped
+        if (rowsDropped > 0) {
+          const dropBonus = rowsDropped * 2;
+          state.score += dropBonus;
+          emit(state, { type: 'drop', row: state.active.pivotRow, col: state.active.pivotCol, count: dropBonus });
+        }
         emitDrop(state);
         placeFormation(state.board, state.active);
         state.active = null;
         state.playState = PlayState.MATCHING;
         state.screenShake = 100;
         return true;
+      }
       case InputAction.SOFT_DROP:
         state.softDropActive = true;
         break;
@@ -183,7 +218,8 @@ function handleFalling(state: GameState, input: InputBuffer, dt: number): void {
   if (processInput(state, input)) return;
   if (!state.active) return;
 
-  const speed = state.softDropActive ? state.fallSpeed * SOFT_DROP_MULTIPLIER : state.fallSpeed;
+  const baseSpeed = state.fallSpeed * state.reliefMultiplier;
+  const speed = state.softDropActive ? baseSpeed * SOFT_DROP_MULTIPLIER : baseSpeed;
   state.fallAccumulator += speed * (dt / 1000);
 
   while (state.active && state.fallAccumulator >= 1) {
@@ -237,9 +273,11 @@ function handleMatching(state: GameState): void {
   if (groups.length > 0) {
     state.chain++;
     if (state.chain > state.maxChain) state.maxChain = state.chain;
+    // Risk multiplier: 1.0 at safe, up to 1.5x at max danger
+    const riskMultiplier = 1.0 + Math.max(0, state.dangerLevel - 0.3) * 0.7;
     const groupData: { row: number; col: number; color: CandyColor }[][] = [];
     for (const group of groups) {
-      state.score += group.length * 10 * state.chain;
+      state.score += Math.round(group.length * 10 * state.chain * riskMultiplier);
       groupData.push(group.map(c => ({ row: c.row, col: c.col, color: c.color })));
     }
 
@@ -281,7 +319,18 @@ function handleMatching(state: GameState): void {
     state.clearTimer = CLEAR_DURATION_MS;
     state.playState = PlayState.CLEARING;
     state.screenShake = Math.min(50 + state.chain * 30, 200);
+
+    // Hit stop on big chains: brief slow-motion for dramatic impact
+    if (state.chain >= 4) {
+      state.hitStopTimer = Math.min(150 + state.chain * 40, 400); // 310ms at 4x, up to 400ms
+      state.hitStopScale = Math.max(0.15, 0.4 - state.chain * 0.05); // slower for bigger chains
+    }
   } else {
+    // Grant post-chain relief: bigger chain = longer, stronger relief
+    if (state.chain >= 3) {
+      state.reliefTimer = Math.min(state.chain * 400, 2000); // up to 2s
+      state.reliefMultiplier = Math.max(0.4, 1.0 - state.chain * 0.1); // down to 0.4x speed
+    }
     state.chain = 0;
     state.playState = PlayState.SPAWNING;
   }
@@ -344,4 +393,59 @@ function handleAbilityActive(state: GameState, dt: number): void {
     applyGravity(state.board);
     state.playState = PlayState.MATCHING;
   }
+}
+
+/**
+ * Apply board modifications for milestone stages.
+ * Lockdown and Cracked Gauntlet pre-fill cells on the board.
+ * Bomb Rush and Sticky Swamp modify spawn rates (handled in getDifficulty).
+ */
+function applyMilestoneBoard(state: GameState, milestone: string): void {
+  if (milestone === 'lockdown') {
+    // Place 8-12 locked candies across the bottom 2 rows
+    const count = 8 + Math.floor(state.rng() * 5);
+    const candidates: number[] = [];
+    for (let row = TOTAL_ROWS - 2; row < TOTAL_ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const idx = row * COLS + col;
+        if (!state.board[idx]) candidates.push(idx);
+      }
+    }
+    // Shuffle and pick
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(state.rng() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    const toPlace = Math.min(count, candidates.length);
+    for (let i = 0; i < toPlace; i++) {
+      const idx = candidates[i];
+      const row = Math.floor(idx / COLS);
+      const col = idx % COLS;
+      const color = Math.floor(state.rng() * state.colorCount) as CandyColor;
+      state.board[idx] = createCandy(color, CandyType.LOCKED, row, col, state);
+    }
+  } else if (milestone === 'cracked_gauntlet') {
+    // Place 10-14 cracked candies across the bottom 3 rows
+    const count = 10 + Math.floor(state.rng() * 5);
+    const candidates: number[] = [];
+    for (let row = TOTAL_ROWS - 3; row < TOTAL_ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const idx = row * COLS + col;
+        if (!state.board[idx]) candidates.push(idx);
+      }
+    }
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(state.rng() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    const toPlace = Math.min(count, candidates.length);
+    for (let i = 0; i < toPlace; i++) {
+      const idx = candidates[i];
+      const row = Math.floor(idx / COLS);
+      const col = idx % COLS;
+      const color = Math.floor(state.rng() * state.colorCount) as CandyColor;
+      state.board[idx] = createCandy(color, CandyType.CRACKED, row, col, state);
+    }
+  }
+  // bomb_rush and sticky_swamp are handled purely via getDifficulty spawn rates
 }

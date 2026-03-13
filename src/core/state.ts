@@ -72,7 +72,8 @@ export type GameEventType =
   | 'pop' | 'drop' | 'chain' | 'move' | 'rotate'
   | 'game_over' | 'stage_up'
   | 'bomb_explode' | 'jelly_clear' | 'unlock' | 'crack'
-  | 'ability_activate' | 'ability_ready' | 'danger';
+  | 'ability_activate' | 'ability_ready' | 'danger'
+  | 'milestone' | 'phase_change';
 
 export interface GameEvent {
   type: GameEventType;
@@ -81,6 +82,7 @@ export interface GameEvent {
   row?: number;
   col?: number;
   count?: number;
+  text?: string;
 }
 
 export interface GameState {
@@ -111,6 +113,12 @@ export interface GameState {
   abilityTimer: number;    // ms remaining for ability animation
   // Danger
   dangerLevel: number;     // 0.0 – 1.0
+  // Adaptive difficulty
+  reliefTimer: number;      // ms remaining of post-chain speed relief
+  reliefMultiplier: number;  // 0.0–1.0, lower = slower (applied to fallSpeed)
+  // Hit stop / slow-mo
+  hitStopTimer: number;     // ms remaining of slow-motion effect
+  hitStopScale: number;     // time scale during hit stop (0.2 = 5x slower)
   // Stats
   maxChain: number;
   playTimeMs: number;
@@ -165,6 +173,10 @@ export function createInitialGameState(seed: number): GameState {
     abilityReady: false,
     abilityTimer: 0,
     dangerLevel: 0,
+    reliefTimer: 0,
+    reliefMultiplier: 1.0,
+    hitStopTimer: 0,
+    hitStopScale: 1.0,
     maxChain: 0,
     playTimeMs: 0,
   };

@@ -52,6 +52,8 @@ export class Canvas2DRenderer implements Renderer {
   private dangerPulse = 0;
   private bgParticles: BgParticle[] = [];
   private stageFlash = 0;
+  private phaseFlash = 0;
+  private phaseFlashColor = '255,150,50';
 
   init(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
@@ -83,6 +85,11 @@ export class Canvas2DRenderer implements Renderer {
     this.stageFlash = 1;
   }
 
+  triggerPhaseFlash(phase: string): void {
+    this.phaseFlash = 1;
+    this.phaseFlashColor = phase === 'pressure' ? '255,120,50' : '100,220,150';
+  }
+
   resize(width: number, height: number): void {
     this.camera = calculateCamera(width, height);
     const { dpr, logicalW, logicalH } = this.camera;
@@ -104,6 +111,10 @@ export class Canvas2DRenderer implements Renderer {
     // Decay stage flash
     if (this.stageFlash > 0) {
       this.stageFlash = Math.max(0, this.stageFlash - frameDt * 0.002);
+    }
+    // Decay phase flash
+    if (this.phaseFlash > 0) {
+      this.phaseFlash = Math.max(0, this.phaseFlash - frameDt * 0.003);
     }
 
     // Screen shake offset
@@ -149,6 +160,12 @@ export class Canvas2DRenderer implements Renderer {
     // Stage flash overlay
     if (this.stageFlash > 0) {
       ctx.fillStyle = `rgba(255,255,200,${this.stageFlash * 0.15})`;
+      ctx.fillRect(boardX, boardY, boardW, boardH);
+    }
+
+    // Phase flash overlay
+    if (this.phaseFlash > 0) {
+      ctx.fillStyle = `rgba(${this.phaseFlashColor},${this.phaseFlash * 0.12})`;
       ctx.fillRect(boardX, boardY, boardW, boardH);
     }
 
@@ -593,9 +610,10 @@ export class Canvas2DRenderer implements Renderer {
   }
 
   private drawHUD(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera): void {
-    const { cellSize, boardX } = cam;
+    const { cellSize, boardX, boardY } = cam;
     const fontSize = Math.max(14, cellSize * 0.35);
     const boardRight = boardX + COLS * cellSize;
+    const boardH = ROWS * cellSize;
 
     // Score with subtle shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -654,29 +672,91 @@ export class Canvas2DRenderer implements Renderer {
 
     // Next preview
     if (state.next) {
-      const previewX = boardRight - cellSize * 2.5;
-      const previewY = 6;
       const ps = Math.floor(cellSize * 0.4);
 
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      this.roundRectFill(ctx, previewX - 4, previewY - 4, ps * 2 + 14, ps * 2 + 14, 6);
-
-      ctx.fillStyle = '#555555';
-      ctx.font = `400 ${fontSize * 0.6}px ${F_UI}`;
-      ctx.textAlign = 'left';
-      ctx.fillText('NEXT', previewX - 4, previewY + ps * 2 + 16);
-
+      // Compute bounding box of the formation to center it in the preview
       const previewCells = getAbsoluteCells({
         ...state.next,
         pivotRow: 0,
         pivotCol: 0,
       });
+      let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+      for (const { row, col } of previewCells) {
+        if (row < minR) minR = row;
+        if (row > maxR) maxR = row;
+        if (col < minC) minC = col;
+        if (col > maxC) maxC = col;
+      }
+      const bboxW = (maxC - minC + 1) * ps + 8;
+      const bboxH = (maxR - minR + 1) * ps + 8;
+      const boxW = Math.max(bboxW, ps * 2 + 14);
+      const boxH = Math.max(bboxH, ps * 2 + 14);
+
+      const previewX = meterX + meterW + 12;
+      const previewY = 6;
+
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      this.roundRectFill(ctx, previewX - 4, previewY - 4, boxW, boxH, 6);
+
+      ctx.fillStyle = '#555555';
+      ctx.font = `400 ${fontSize * 0.6}px ${F_UI}`;
+      ctx.textAlign = 'left';
+      ctx.fillText('NEXT', previewX - 4, previewY + boxH + 4);
+
+      // Center cells within the preview box
+      const offsetX = previewX + (boxW - 8 - (maxC - minC + 1) * ps) / 2;
+      const offsetY = previewY + (boxH - 8 - (maxR - minR + 1) * ps) / 2;
       for (const { row, col, candy } of previewCells) {
-        const px = previewX + col * ps + 1;
-        const py = previewY + row * ps + 1;
+        const px = offsetX + (col - minC) * ps + 1;
+        const py = offsetY + (row - minR) * ps + 1;
         this.drawCandy(ctx, candy, px, py, ps - 2);
       }
     }
+
+    // Ability touch button — below the board, centered
+    const btnW = Math.min(140, cam.logicalW * 0.35);
+    const btnH = 44;
+    const btnX = cam.logicalW / 2 - btnW / 2;
+    const btnY = boardY + boardH + 8;
+    this.abilityBtnRect = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    if (state.abilityReady) {
+      // Pulsing glow when ready
+      const pulse = 0.7 + Math.sin(this.dangerPulse * 4) * 0.3;
+      ctx.fillStyle = `rgba(34,204,136,${0.15 + pulse * 0.1})`;
+      this.roundRectFill(ctx, btnX - 3, btnY - 3, btnW + 6, btnH + 6, 12);
+      const grad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+      grad.addColorStop(0, '#22cc88');
+      grad.addColorStop(1, '#18a070');
+      ctx.fillStyle = grad;
+      this.roundRectFill(ctx, btnX, btnY, btnW, btnH, 9);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${Math.max(16, btnH * 0.4)}px ${F_ACTION}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SUGAR BURST', btnX + btnW / 2, btnY + btnH / 2);
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      this.roundRectFill(ctx, btnX, btnY, btnW, btnH, 9);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      this.roundRectStroke(ctx, btnX, btnY, btnW, btnH, 9);
+      ctx.fillStyle = '#444444';
+      ctx.font = `600 ${Math.max(14, btnH * 0.35)}px ${F_UI}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ABILITY', btnX + btnW / 2, btnY + btnH / 2);
+    }
+
+    ctx.textAlign = 'left';
+  }
+
+  // Ability button hit-test rect (in logical pixels)
+  private abilityBtnRect = { x: 0, y: 0, w: 0, h: 0 };
+
+  hitTestAbilityButton(px: number, py: number): boolean {
+    const r = this.abilityBtnRect;
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   }
 
   private drawGameOver(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera): void {

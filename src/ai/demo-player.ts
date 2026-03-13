@@ -15,8 +15,8 @@ let targetCol = -1;
 let targetRot = 0;
 let moveTimer = 0;
 
-const THINK_DELAY = 30;    // ticks before deciding where to place
-const MOVE_INTERVAL = 8;   // ticks between each move/rotate action
+const THINK_DELAY = 15;    // ticks before deciding where to place
+const MOVE_INTERVAL = 4;   // ticks between each move/rotate action
 
 export function resetDemoAI(): void {
   thinkTimer = 0;
