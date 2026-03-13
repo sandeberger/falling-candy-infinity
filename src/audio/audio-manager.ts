@@ -1,6 +1,10 @@
 export class AudioManager {
   private ctx: AudioContext | null = null;
   sfxEnabled = true;
+  private alarmOsc: OscillatorNode | null = null;
+  private alarmGain: GainNode | null = null;
+  private alarmLfo: OscillatorNode | null = null;
+  private alarmActive = false;
 
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
@@ -96,8 +100,81 @@ export class AudioManager {
   }
 
   danger(): void {
+    // One-shot trigger kept for the initial cross-threshold event
     this.playTone(150, 0.2, 0.1, 'square');
     setTimeout(() => this.playTone(150, 0.2, 0.1, 'square'), 300);
+  }
+
+  /** Call every frame — starts/stops a pulsing alarm based on danger level */
+  updateDangerAlarm(dangerLevel: number): void {
+    if (!this.sfxEnabled) {
+      if (this.alarmActive) this.stopAlarm();
+      return;
+    }
+
+    const shouldAlarm = dangerLevel > 0.5;
+
+    if (shouldAlarm && !this.alarmActive) {
+      this.startAlarm(dangerLevel);
+    } else if (!shouldAlarm && this.alarmActive) {
+      this.stopAlarm();
+    } else if (shouldAlarm && this.alarmActive && this.alarmGain) {
+      // Scale volume with danger intensity (0.5→1.0 maps to 0.06→0.14)
+      const intensity = (dangerLevel - 0.5) * 2; // 0→1
+      this.alarmGain.gain.value = 0.06 + intensity * 0.08;
+    }
+  }
+
+  private startAlarm(dangerLevel: number): void {
+    const ctx = this.ensureCtx();
+
+    // Main alarm tone — alternates between two pitches via LFO
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = 220;
+
+    // LFO modulates frequency for the classic two-tone alarm sweep
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = 'square';
+    lfo.frequency.value = 3; // 3 Hz pulse = ~classic alarm rate
+    lfoGain.gain.value = 80; // sweeps 220 ± 80 Hz → between 140 and 300
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    // Output gain
+    const gain = ctx.createGain();
+    const intensity = Math.max(0, (dangerLevel - 0.5) * 2);
+    gain.gain.value = 0.06 + intensity * 0.08;
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    lfo.start();
+
+    this.alarmOsc = osc;
+    this.alarmGain = gain;
+    this.alarmLfo = lfo;
+    this.alarmActive = true;
+  }
+
+  private stopAlarm(): void {
+    if (this.alarmOsc) {
+      this.alarmOsc.stop();
+      this.alarmOsc.disconnect();
+      this.alarmOsc = null;
+    }
+    if (this.alarmLfo) {
+      this.alarmLfo.stop();
+      this.alarmLfo.disconnect();
+      this.alarmLfo = null;
+    }
+    if (this.alarmGain) {
+      this.alarmGain.disconnect();
+      this.alarmGain = null;
+    }
+    this.alarmActive = false;
   }
 
   phasePressure(): void {
@@ -126,6 +203,7 @@ export class AudioManager {
   }
 
   destroy(): void {
+    this.stopAlarm();
     this.ctx?.close();
     this.ctx = null;
   }

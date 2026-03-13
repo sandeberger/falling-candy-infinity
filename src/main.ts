@@ -106,6 +106,7 @@ window.addEventListener('keydown', (e) => {
     if (state.appState === AppState.PLAYING) {
       state.appState = AppState.PAUSED;
       music.pause();
+      audio.updateDangerAlarm(0);
     } else if (state.appState === AppState.PAUSED) {
       state.appState = AppState.PLAYING;
       music.resume();
@@ -177,6 +178,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (renderer.hitTestPauseButton(px, py)) {
       state.appState = AppState.PAUSED;
       music.pause();
+      audio.updateDangerAlarm(0);
       return;
     }
     if (renderer.hitTestAbilityButton(px, py)) {
@@ -290,6 +292,7 @@ function processEvents(): void {
       case 'game_over':
         audio.gameOver();
         hapticGameOver();
+        audio.updateDangerAlarm(0);
         music.stop();
         if (!gameOverScoreSaved) {
           updateHighScores(save, state.score, state.stage, state.maxChain);
@@ -548,6 +551,7 @@ function loop(now: number): void {
     }
 
     music.update(frameTime, state.dangerLevel);
+    audio.updateDangerAlarm(state.dangerLevel);
     fx.update(frameTime);
 
     const alpha = accumulator / SIM_DT;
