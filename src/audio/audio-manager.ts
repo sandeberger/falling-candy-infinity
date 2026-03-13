@@ -4,6 +4,7 @@ export class AudioManager {
   private alarmOsc: OscillatorNode | null = null;
   private alarmGain: GainNode | null = null;
   private alarmLfo: OscillatorNode | null = null;
+  private alarmLfoGain: GainNode | null = null;
   private alarmActive = false;
 
   private ensureCtx(): AudioContext {
@@ -56,6 +57,7 @@ export class AudioManager {
   }
 
   gameOver(): void {
+    this.stopAlarm();
     this.playTone(200, 0.3, 0.2, 'sawtooth');
     setTimeout(() => this.playTone(150, 0.4, 0.15, 'sawtooth'), 200);
     setTimeout(() => this.playTone(100, 0.5, 0.12, 'sawtooth'), 400);
@@ -156,24 +158,21 @@ export class AudioManager {
     this.alarmOsc = osc;
     this.alarmGain = gain;
     this.alarmLfo = lfo;
+    this.alarmLfoGain = lfoGain;
     this.alarmActive = true;
   }
 
   private stopAlarm(): void {
-    if (this.alarmOsc) {
-      this.alarmOsc.stop();
-      this.alarmOsc.disconnect();
-      this.alarmOsc = null;
-    }
-    if (this.alarmLfo) {
-      this.alarmLfo.stop();
-      this.alarmLfo.disconnect();
-      this.alarmLfo = null;
-    }
-    if (this.alarmGain) {
-      this.alarmGain.disconnect();
-      this.alarmGain = null;
-    }
+    try { this.alarmOsc?.stop(); } catch { /* already stopped */ }
+    try { this.alarmOsc?.disconnect(); } catch { /* ok */ }
+    try { this.alarmLfo?.stop(); } catch { /* already stopped */ }
+    try { this.alarmLfo?.disconnect(); } catch { /* ok */ }
+    try { this.alarmLfoGain?.disconnect(); } catch { /* ok */ }
+    try { this.alarmGain?.disconnect(); } catch { /* ok */ }
+    this.alarmOsc = null;
+    this.alarmLfo = null;
+    this.alarmLfoGain = null;
+    this.alarmGain = null;
     this.alarmActive = false;
   }
 
