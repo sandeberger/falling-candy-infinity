@@ -89,6 +89,16 @@ export class MusicEngine {
     }
   }
 
+  pause(): void {
+    if (!this.running || !this.ctx) return;
+    this.ctx.suspend();
+  }
+
+  resume(): void {
+    if (!this.running || !this.ctx) return;
+    this.ctx.resume();
+  }
+
   stop(): void {
     if (!this.running) return;
     this.running = false;

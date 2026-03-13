@@ -306,7 +306,7 @@ export class Canvas2DRenderer implements Renderer {
 
     switch (candy.type) {
       case CandyType.STANDARD:
-        this.drawStandardCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor);
+        this.drawStandardCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.color);
         break;
 
       case CandyType.JELLY:
@@ -314,7 +314,7 @@ export class Canvas2DRenderer implements Renderer {
         break;
 
       case CandyType.STICKY:
-        this.drawStickyCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.stickyBonds ?? 0);
+        this.drawStickyCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.stickyBonds ?? 0, candy.color);
         break;
 
       case CandyType.BOMB:
@@ -330,15 +330,38 @@ export class Canvas2DRenderer implements Renderer {
         break;
 
       case CandyType.CRACKED:
-        this.drawCrackedCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.crackHits ?? 2);
+        this.drawCrackedCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.crackHits ?? 2, candy.color);
         break;
     }
   }
 
   private drawStandardCandy(
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
-    base: string, light: string, dark: string,
+    base: string, light: string, dark: string, color?: CandyColor,
   ): void {
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+
+    // Dispatch to unique shape per color
+    switch (color) {
+      case CandyColor.BLUE:
+        this.drawDiamondShape(ctx, cx, cy, size, base, light, dark);
+        return;
+      case CandyColor.GREEN:
+        this.drawOvalShape(ctx, cx, cy, size, base, light, dark);
+        return;
+      case CandyColor.YELLOW:
+        this.drawHexShape(ctx, cx, cy, size, base, light, dark);
+        return;
+      case CandyColor.PURPLE:
+        this.drawDropShape(ctx, cx, cy, size, base, light, dark);
+        return;
+      default:
+        // RED and fallback: classic rounded square
+        break;
+    }
+
+    // RED: rounded square (hard candy)
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     this.roundRectFill(ctx, x + 2, y + 2, size, size, r);
@@ -366,6 +389,194 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.beginPath();
     ctx.ellipse(x + size * 0.32, y + size * 0.28, size * 0.15, size * 0.1, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** BLUE: diamond/rhombus — crystal candy */
+  private drawDiamondShape(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number,
+    base: string, light: string, dark: string,
+  ): void {
+    const hr = size * 0.46; // half-radius
+    const softR = size * 0.06; // corner softness
+
+    const diamond = () => {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - hr);
+      ctx.quadraticCurveTo(cx + softR, cy - hr + softR, cx + hr, cy);
+      ctx.quadraticCurveTo(cx + hr - softR, cy + softR, cx, cy + hr);
+      ctx.quadraticCurveTo(cx - softR, cy + hr - softR, cx - hr, cy);
+      ctx.quadraticCurveTo(cx - hr + softR, cy - softR, cx, cy - hr);
+      ctx.closePath();
+    };
+
+    // Shadow
+    ctx.save();
+    ctx.translate(2, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    diamond();
+    ctx.fill();
+    ctx.restore();
+
+    // Body
+    ctx.fillStyle = base;
+    diamond();
+    ctx.fill();
+
+    // Top-half highlight
+    ctx.save();
+    diamond();
+    ctx.clip();
+    const hlGrad = ctx.createLinearGradient(cx, cy - hr, cx, cy);
+    hlGrad.addColorStop(0, light);
+    hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(cx - hr, cy - hr, hr * 2, hr);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // Specular band
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - hr * 0.35, size * 0.08, size * 0.18, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** GREEN: oval jellybean */
+  private drawOvalShape(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number,
+    base: string, light: string, dark: string,
+  ): void {
+    const rx = size * 0.46;
+    const ry = size * 0.38;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 2, cy + 2, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Top highlight
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+    const hlGrad = ctx.createLinearGradient(cx, cy - ry, cx, cy);
+    hlGrad.addColorStop(0, light);
+    hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // Translucent jelly gloss
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx - rx * 0.25, cy - ry * 0.3, size * 0.14, size * 0.08, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** YELLOW: hexagon — glazed citrus tablet */
+  private drawHexShape(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number,
+    base: string, light: string, dark: string,
+  ): void {
+    const hr = size * 0.44;
+
+    const hexPath = (ox = 0, oy = 0) => {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+        const hx = cx + ox + Math.cos(angle) * hr;
+        const hy = cy + oy + Math.sin(angle) * hr;
+        if (i === 0) ctx.moveTo(hx, hy);
+        else ctx.lineTo(hx, hy);
+      }
+      ctx.closePath();
+    };
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    hexPath(2, 2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = base;
+    hexPath();
+    ctx.fill();
+
+    // Top highlight
+    ctx.save();
+    hexPath();
+    ctx.clip();
+    const hlGrad = ctx.createLinearGradient(cx, cy - hr, cx, cy);
+    hlGrad.addColorStop(0, light);
+    hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(cx - hr, cy - hr, hr * 2, hr);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // Golden gloss
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(cx - hr * 0.2, cy - hr * 0.25, size * 0.12, size * 0.07, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** PURPLE: teardrop — grape gummy */
+  private drawDropShape(
+    ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number,
+    base: string, light: string, dark: string,
+  ): void {
+    const r = size * 0.38;
+
+    const dropPath = (ox = 0, oy = 0) => {
+      ctx.beginPath();
+      // Bottom circle
+      ctx.arc(cx + ox, cy + oy + r * 0.15, r, 0.5, Math.PI - 0.5, false);
+      // Narrowing top — quadratic to a point
+      ctx.quadraticCurveTo(cx + ox - r * 0.3, cy + oy - r * 0.7, cx + ox, cy + oy - r * 1.1);
+      ctx.quadraticCurveTo(cx + ox + r * 0.3, cy + oy - r * 0.7, cx + ox + r * Math.cos(0.5), cy + oy + r * 0.15 + r * Math.sin(0.5));
+      ctx.closePath();
+    };
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    dropPath(2, 2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = base;
+    dropPath();
+    ctx.fill();
+
+    // Top highlight
+    ctx.save();
+    dropPath();
+    ctx.clip();
+    const hlGrad = ctx.createLinearGradient(cx, cy - r, cx, cy);
+    hlGrad.addColorStop(0, light);
+    hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(cx - r, cy - r * 1.1, r * 2, r * 1.1);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // Glitter gloss
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx - r * 0.15, cy - r * 0.4, size * 0.1, size * 0.06, -0.4, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -416,10 +627,10 @@ export class Canvas2DRenderer implements Renderer {
 
   private drawStickyCandy(
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
-    base: string, light: string, dark: string, bonds: number,
+    base: string, light: string, dark: string, bonds: number, color?: CandyColor,
   ): void {
-    // Standard candy base
-    this.drawStandardCandy(ctx, x, y, size, r, base, light, dark);
+    // Standard candy base (with unique shape)
+    this.drawStandardCandy(ctx, x, y, size, r, base, light, dark, color);
 
     // Sticky bond indicators — thick colored connectors
     ctx.lineWidth = 3;
@@ -584,10 +795,10 @@ export class Canvas2DRenderer implements Renderer {
 
   private drawCrackedCandy(
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
-    base: string, light: string, dark: string, hits: number,
+    base: string, light: string, dark: string, hits: number, color?: CandyColor,
   ): void {
-    // Normal candy base
-    this.drawStandardCandy(ctx, x, y, size, r, base, light, dark);
+    // Normal candy base (with unique shape)
+    this.drawStandardCandy(ctx, x, y, size, r, base, light, dark, color);
 
     // Crack lines
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
@@ -776,6 +987,22 @@ export class Canvas2DRenderer implements Renderer {
       ctx.fillText('ability', meterX, meterY - 10);
     }
 
+    // Pause button — top-right
+    const pauseS = Math.max(20, cellSize * 0.5);
+    const pauseX = boardRight - pauseS - 4;
+    const pauseY = HUD_HEIGHT / 2 - pauseS / 2 - 8;
+    this.pauseBtnRect = { x: pauseX - 6, y: pauseY - 6, w: pauseS + 12, h: pauseS + 12 };
+
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    this.roundRectFill(ctx, pauseX - 6, pauseY - 6, pauseS + 12, pauseS + 12, 6);
+    // Two vertical bars
+    ctx.fillStyle = '#aaaaaa';
+    const barW = pauseS * 0.22;
+    const barH = pauseS * 0.7;
+    const barY = pauseY + (pauseS - barH) / 2;
+    this.roundRectFill(ctx, pauseX + pauseS * 0.22, barY, barW, barH, 2);
+    this.roundRectFill(ctx, pauseX + pauseS * 0.56, barY, barW, barH, 2);
+
     // Next preview
     if (state.next) {
       const ps = Math.floor(cellSize * 0.4);
@@ -859,10 +1086,39 @@ export class Canvas2DRenderer implements Renderer {
 
   // Ability button hit-test rect (in logical pixels)
   private abilityBtnRect = { x: 0, y: 0, w: 0, h: 0 };
+  // Pause button hit-test rect
+  private pauseBtnRect = { x: 0, y: 0, w: 0, h: 0 };
 
   hitTestAbilityButton(px: number, py: number): boolean {
     const r = this.abilityBtnRect;
     return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
+  hitTestPauseButton(px: number, py: number): boolean {
+    const r = this.pauseBtnRect;
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
+  drawPauseOverlay(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, cam.logicalW, cam.logicalH);
+
+    const cx = cam.logicalW / 2;
+    const cy = cam.logicalH / 2;
+    const s = Math.min(28, cam.logicalW * 0.06);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 ${s * 2}px ${F_ACTION}`;
+    ctx.fillText('PAUSED', cx, cy - s * 1.5);
+
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = `400 ${s * 0.7}px ${F_UI}`;
+    ctx.fillText('Tap to resume', cx, cy + s);
+
+    ctx.textAlign = 'left';
   }
 
   private drawGameOver(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera): void {

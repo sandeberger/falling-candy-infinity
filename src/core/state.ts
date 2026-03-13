@@ -25,6 +25,7 @@ export enum AppState {
   BOOT,
   MENU,
   PLAYING,
+  PAUSED,
   GAME_OVER,
 }
 

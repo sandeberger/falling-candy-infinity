@@ -97,6 +97,16 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && settingsOpen) {
     settingsOpen = false;
   }
+  // Pause/unpause during gameplay
+  if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && !settingsOpen) {
+    if (state.appState === AppState.PLAYING) {
+      state.appState = AppState.PAUSED;
+      music.pause();
+    } else if (state.appState === AppState.PAUSED) {
+      state.appState = AppState.PLAYING;
+      music.resume();
+    }
+  }
 });
 
 // Primary tap/click handler
@@ -160,10 +170,20 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.appState === AppState.PLAYING) {
+    if (renderer.hitTestPauseButton(px, py)) {
+      state.appState = AppState.PAUSED;
+      music.pause();
+      return;
+    }
     if (renderer.hitTestAbilityButton(px, py)) {
       inputBuffer.push(InputAction.ABILITY);
       return;
     }
+  }
+  if (state.appState === AppState.PAUSED) {
+    state.appState = AppState.PLAYING;
+    music.resume();
+    return;
   }
   if (state.appState === AppState.GAME_OVER) {
     state.appState = AppState.MENU;
@@ -488,6 +508,15 @@ function loop(now: number): void {
     if (settingsOpen) {
       drawSettings(ctx, cam.logicalW, cam.logicalH, save, installAvailable && canInstall());
     }
+  } else if (state.appState === AppState.PAUSED) {
+    // Render the frozen game state (no simulation)
+    fx.update(frameTime);
+    renderer.render(state, 0, frameTime);
+
+    // Pause overlay
+    const dpr = cam.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    renderer.drawPauseOverlay(ctx, cam);
   } else if (state.appState === AppState.PLAYING || state.appState === AppState.GAME_OVER) {
     // Apply hit stop time dilation
     let effectiveFrameTime = frameTime;
