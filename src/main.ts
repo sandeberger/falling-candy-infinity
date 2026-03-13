@@ -9,7 +9,7 @@ import { AudioManager } from './audio/audio-manager.js';
 import { MusicEngine } from './audio/music.js';
 import { FXManager } from './fx/animation.js';
 import { loadSave, writeSave, updateHighScores, type SaveData } from './save/persistence.js';
-import { drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner } from './ui/menu.js';
+import { drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner, loadLogo } from './ui/menu.js';
 import { drawSettings, hitTestSettings } from './ui/settings.js';
 import { hapticDrop, hapticMatch, hapticChain, hapticBomb, hapticAbility, hapticGameOver, setHapticsEnabled } from './input/haptics.js';
 import { registerSW, setupInstallPrompt, canInstall, triggerInstall } from './pwa/install-prompt.js';
@@ -19,6 +19,9 @@ import { demoBotTick, resetDemoAI } from './ai/demo-player.js';
 registerSW();
 let installAvailable = false;
 setupInstallPrompt(() => { installAvailable = true; });
+
+// --- Load logo ---
+loadLogo();
 
 // --- Init ---
 const canvas = document.getElementById('game') as HTMLCanvasElement;

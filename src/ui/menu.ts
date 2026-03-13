@@ -3,6 +3,44 @@ import type { SaveData } from '../save/persistence.js';
 const F_TITLE = 'Bangers, cursive';
 const F_UI = 'Fredoka, sans-serif';
 
+// --- Logo image ---
+let logoImg: HTMLImageElement | null = null;
+let logoLoaded = false;
+
+export function loadLogo(): void {
+  const img = new Image();
+  img.src = '/logo.png';
+  img.onload = () => {
+    logoImg = img;
+    logoLoaded = true;
+  };
+}
+
+/** Draw the logo image centered at (cx, cy), fitting within maxW x maxH, with optional scale */
+function drawLogoAt(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  maxW: number,
+  maxH: number,
+  scale: number,
+  alpha: number,
+): void {
+  if (!logoImg || !logoLoaded) return;
+  const aspect = logoImg.width / logoImg.height;
+  let drawW = maxW;
+  let drawH = drawW / aspect;
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * aspect;
+  }
+  drawW *= scale;
+  drawH *= scale;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(logoImg, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+  ctx.globalAlpha = 1;
+}
+
 export function drawMenu(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -10,48 +48,31 @@ export function drawMenu(
   save: SaveData,
   time: number,
 ): void {
-  // No solid background — demo plays behind with dim overlay from main.ts
-  const colors = ['#ff4444', '#4488ff', '#44dd44', '#ffdd44', '#cc44ff'];
-
   const cx = w / 2;
 
-  // Title
+  // Logo with gentle breathing pulse
+  const pulse = 1 + Math.sin(time * 0.002) * 0.02;
+  const logoMaxW = Math.min(w * 0.75, 360);
+  const logoMaxH = h * 0.28;
+  const logoY = h * 0.26;
+  drawLogoAt(ctx, cx, logoY, logoMaxW, logoMaxH, pulse, 1);
+
+  // "INFINITY" subtitle below logo
   const titleSize = Math.min(72, w * 0.16);
-  ctx.font = `700 ${titleSize}px ${F_TITLE}`;
+  ctx.font = `700 ${titleSize * 1.0}px ${F_TITLE}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-
-  // Wobble each letter
-  const title = 'FALLING CANDY';
-  const subtitle = 'INFINITY';
-  const titleY = h * 0.28;
-  for (let i = 0; i < title.length; i++) {
-    const yOff = Math.sin(time * 0.003 + i * 0.4) * 5;
-    const charW = ctx.measureText(title[i]).width;
-    const startX = cx - ctx.measureText(title).width / 2;
-    let xPos = startX;
-    for (let j = 0; j < i; j++) xPos += ctx.measureText(title[j]).width;
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillText(title[i], xPos + charW / 2 + 2, titleY + yOff + 3);
-    // Letter
-    ctx.fillStyle = colors[i % 5];
-    ctx.fillText(title[i], xPos + charW / 2, titleY + yOff);
-  }
-
-  // Subtitle
-  ctx.font = `700 ${titleSize * 1.4}px ${F_TITLE}`;
-  const subY = titleY + titleSize * 2;
+  const subY = logoY + logoMaxH * 0.5 + titleSize * 0.5;
   const hue = (time * 0.1) % 360;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillText(subtitle, cx + 2, subY + 3);
+  ctx.fillText('INFINITY', cx + 2, subY + 3);
   ctx.fillStyle = `hsl(${hue}, 70%, 70%)`;
-  ctx.fillText(subtitle, cx, subY);
+  ctx.fillText('INFINITY', cx, subY);
 
   // Play button
-  const btnY = h * 0.54;
-  const pulse = (Math.sin(time * 0.004) + 1) * 0.5;
-  const btnAlpha = 0.7 + pulse * 0.3;
+  const btnY = subY + titleSize * 1.2;
+  const btnPulse = (Math.sin(time * 0.004) + 1) * 0.5;
+  const btnAlpha = 0.7 + btnPulse * 0.3;
   ctx.globalAlpha = btnAlpha;
   ctx.fillStyle = '#ffffff';
   ctx.font = `600 ${Math.max(40, titleSize * 0.65)}px ${F_UI}`;
@@ -60,7 +81,7 @@ export function drawMenu(
 
   // High score
   if (save.highScore > 0) {
-    const statY = h * 0.67;
+    const statY = btnY + titleSize * 0.9;
     const statFont = Math.max(26, titleSize * 0.4);
     ctx.fillStyle = '#999999';
     ctx.font = `400 ${statFont}px ${F_UI}`;
@@ -195,9 +216,7 @@ export function hitTestInstallBanner(px: number, py: number): 'install' | 'dismi
 
 // --- Intro / Logo Reveal ---
 const INTRO_DURATION = 3000;
-const INTRO_FADE_OUT = 400; // crossfade to menu at end
-
-// Candy colors for letter glow
+const INTRO_FADE_OUT = 400;
 const INTRO_COLORS = ['#ff4444', '#4488ff', '#44dd44', '#ffdd44', '#cc44ff'];
 
 export function drawIntro(
@@ -213,7 +232,7 @@ export function drawIntro(
   ctx.fillRect(0, 0, w, h);
 
   const cx = w / 2;
-  const cy = h * 0.38;
+  const cy = h * 0.35;
 
   // Radial candy glow (builds up phase 0.1→0.5)
   const glowStrength = Math.min(1, Math.max(0, (t - 0.1) / 0.4));
@@ -243,75 +262,34 @@ export function drawIntro(
   }
   ctx.globalAlpha = 1;
 
-  // --- "FALLING CANDY" — letters drop in one by one ---
-  const title = 'FALLING CANDY';
-  const titleSize = Math.min(38, w * 0.085);
-  ctx.font = `700 ${titleSize}px ${F_TITLE}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  // --- Logo image fades in and scales up ---
+  const logoRevealStart = 0.1;
+  const logoRevealEnd = 0.55;
+  const logoT = Math.max(0, Math.min(1, (t - logoRevealStart) / (logoRevealEnd - logoRevealStart)));
 
-  const titleY = h * 0.30;
-  const titleW = ctx.measureText(title).width;
-  const startX = cx - titleW / 2;
-
-  // Letters reveal from t=0.15 to t=0.55 (staggered)
-  const letterDelay = 0.03;
-  const letterDrop = 60; // px drop distance
-
-  for (let i = 0; i < title.length; i++) {
-    const letterStart = 0.15 + i * letterDelay;
-    const letterT = Math.max(0, Math.min(1, (t - letterStart) / 0.12));
-
-    if (letterT <= 0) continue;
-
-    // Elastic ease-out for the drop
-    const ease = letterT < 1
-      ? 1 - Math.pow(1 - letterT, 3) * Math.cos(letterT * Math.PI * 1.5)
+  if (logoT > 0 && logoLoaded) {
+    // Ease-out elastic scale
+    const scaleRaw = logoT < 1
+      ? logoT * (2 - logoT) * (1 + 0.08 * Math.sin(logoT * Math.PI * 2.5))
       : 1;
-    const yOff = (1 - ease) * -letterDrop;
+    // Add gentle breathing pulse once fully revealed
+    const breathe = logoT >= 1 ? Math.sin(time * 0.003) * 0.015 : 0;
+    const scale = scaleRaw + breathe;
+    const alpha = Math.min(1, logoT * 2.5);
 
-    // Accumulate x position
-    let xPos = startX;
-    for (let j = 0; j < i; j++) xPos += ctx.measureText(title[j]).width;
-    const charW = ctx.measureText(title[i]).width;
-    const lx = xPos + charW / 2;
-    const ly = titleY + yOff;
-
-    // Letter alpha
-    const lAlpha = Math.min(1, letterT * 2);
-    ctx.globalAlpha = lAlpha;
-
-    // Candy glow behind letter
-    if (letterT > 0.3) {
-      const glowAlpha = Math.min(0.4, (letterT - 0.3) * 0.6);
-      ctx.shadowColor = INTRO_COLORS[i % 5];
-      ctx.shadowBlur = 15 + Math.sin(time * 0.005 + i) * 5;
-      ctx.globalAlpha = glowAlpha;
-      ctx.fillStyle = INTRO_COLORS[i % 5];
-      ctx.fillText(title[i], lx, ly);
-      ctx.shadowBlur = 0;
-    }
-
-    // Shadow
-    ctx.globalAlpha = lAlpha * 0.5;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillText(title[i], lx + 2, ly + 3);
-
-    // Letter
-    ctx.globalAlpha = lAlpha;
-    ctx.fillStyle = INTRO_COLORS[i % 5];
-    ctx.fillText(title[i], lx, ly);
+    const maxW = Math.min(w * 0.8, 400);
+    const maxH = h * 0.32;
+    drawLogoAt(ctx, cx, cy, maxW, maxH, scale, alpha);
   }
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
 
   // --- "INFINITY" — scales up from center ---
   const subStart = 0.50;
   const subT = Math.max(0, Math.min(1, (t - subStart) / 0.18));
   if (subT > 0) {
+    const titleSize = Math.min(38, w * 0.085);
     const subSize = titleSize * 1.4;
     ctx.font = `700 ${subSize}px ${F_TITLE}`;
-    const subY = titleY + titleSize * 2.2;
+    const subY = cy + h * 0.2;
 
     // Scale: starts small, overshoots, settles
     const scale = subT < 1
@@ -361,7 +339,6 @@ export function drawIntro(
         const sparkSize = 3 * (1 - sparkT);
         ctx.globalAlpha = (1 - sparkT) * 0.7;
         ctx.fillStyle = INTRO_COLORS[i % 5];
-        // Star
         ctx.beginPath();
         ctx.moveTo(sx, sy - sparkSize);
         ctx.lineTo(sx + sparkSize * 0.3, sy - sparkSize * 0.3);
@@ -378,12 +355,12 @@ export function drawIntro(
   }
   ctx.globalAlpha = 1;
 
-  // --- "Tap to skip" hint (appears after 1s) ---
+  // --- "Tap to skip" hint ---
   if (t > 0.35 && t < 0.9) {
     const hintAlpha = Math.min(1, (t - 0.35) / 0.15) * 0.4;
     ctx.globalAlpha = hintAlpha;
     ctx.fillStyle = '#666666';
-    const hintSize = Math.max(11, titleSize * 0.3);
+    const hintSize = Math.max(11, w * 0.03);
     ctx.font = `400 ${hintSize}px ${F_UI}`;
     ctx.textAlign = 'center';
     ctx.fillText('Tap to skip', cx, h * 0.88);
