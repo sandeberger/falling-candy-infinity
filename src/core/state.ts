@@ -22,6 +22,7 @@ export enum CandyType {
 }
 
 export enum AppState {
+  SPLASH,
   BOOT,
   MENU,
   PLAYING,

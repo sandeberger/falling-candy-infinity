@@ -9,7 +9,7 @@ import { AudioManager } from './audio/audio-manager.js';
 import { MusicEngine } from './audio/music.js';
 import { FXManager } from './fx/animation.js';
 import { loadSave, writeSave, updateHighScores, type SaveData } from './save/persistence.js';
-import { drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner, loadLogo } from './ui/menu.js';
+import { drawSplash, drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner, loadLogo } from './ui/menu.js';
 import { drawSettings, hitTestSettings } from './ui/settings.js';
 import { hapticDrop, hapticMatch, hapticChain, hapticBomb, hapticAbility, hapticGameOver, setHapticsEnabled } from './input/haptics.js';
 import { registerSW, setupInstallPrompt, canInstall, triggerInstall } from './pwa/install-prompt.js';
@@ -43,8 +43,7 @@ menuMusic.setEnabled(save.musicEnabled);
 setHapticsEnabled(save.hapticsEnabled);
 
 let state: GameState = createInitialGameState(Date.now());
-state.appState = AppState.BOOT;
-menuMusic.start();
+state.appState = AppState.SPLASH;
 
 let menuTime = 0;
 let introTime = 0;
@@ -86,6 +85,12 @@ const cleanupKeyboard = setupKeyboard(inputBuffer, () => state);
 window.addEventListener('keydown', (e) => {
   if (e.key === 'a' || e.key === 'A') {
     inputBuffer.push(InputAction.ABILITY);
+  }
+  if (state.appState === AppState.SPLASH) {
+    menuMusic.start();
+    state.appState = AppState.BOOT;
+    introTime = 0;
+    return;
   }
   if (state.appState === AppState.BOOT) {
     if (!introStingPlayed) {
@@ -141,6 +146,12 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
+  if (state.appState === AppState.SPLASH) {
+    menuMusic.start();
+    state.appState = AppState.BOOT;
+    introTime = 0;
+    return;
+  }
   if (state.appState === AppState.BOOT) {
     // Skip intro on tap — play sting on first interaction (unlocks AudioContext)
     if (!introStingPlayed) {
@@ -458,7 +469,12 @@ function loop(now: number): void {
   const cam = renderer.getCamera();
   const ctx = (canvas.getContext('2d'))!;
 
-  if (state.appState === AppState.BOOT) {
+  if (state.appState === AppState.SPLASH) {
+    menuTime += frameTime;
+    const dpr = cam.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawSplash(ctx, cam.logicalW, cam.logicalH, menuTime);
+  } else if (state.appState === AppState.BOOT) {
     introTime += frameTime;
     const dpr = cam.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

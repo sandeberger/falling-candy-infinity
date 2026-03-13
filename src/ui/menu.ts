@@ -41,6 +41,38 @@ function drawLogoAt(
   ctx.globalAlpha = 1;
 }
 
+export function drawSplash(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  time: number,
+): void {
+  // Dark background
+  ctx.fillStyle = '#0e0618';
+  ctx.fillRect(0, 0, w, h);
+
+  const cx = w / 2;
+
+  // Logo
+  const pulse = 1 + Math.sin(time * 0.002) * 0.02;
+  const logoMaxW = Math.min(w * 0.85, 600);
+  const logoMaxH = h * 0.35;
+  drawLogoAt(ctx, cx, h * 0.38, logoMaxW, logoMaxH, pulse, 1);
+
+  // "Tap to start" — pulsing
+  const btnPulse = (Math.sin(time * 0.004) + 1) * 0.5;
+  const btnAlpha = 0.5 + btnPulse * 0.5;
+  const fontSize = Math.max(28, Math.min(48, w * 0.1));
+  ctx.globalAlpha = btnAlpha;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `600 ${fontSize}px ${F_UI}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('TAP TO START', cx, h * 0.68);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
 export function drawMenu(
   ctx: CanvasRenderingContext2D,
   w: number,
