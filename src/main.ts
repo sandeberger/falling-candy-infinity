@@ -29,7 +29,8 @@ const renderer = new Canvas2DRenderer();
 renderer.init(canvas);
 
 const audio = new AudioManager();
-const music = new MusicEngine();
+const menuMusic = new MusicEngine('/menu-music.mp3');
+const music = new MusicEngine('/music.mp3');
 const fx = new FXManager();
 renderer.setFX(fx);
 
@@ -38,10 +39,12 @@ const save: SaveData = loadSave();
 
 audio.sfxEnabled = save.sfxEnabled;
 music.setEnabled(save.musicEnabled);
+menuMusic.setEnabled(save.musicEnabled);
 setHapticsEnabled(save.hapticsEnabled);
 
 let state: GameState = createInitialGameState(Date.now());
 state.appState = AppState.BOOT;
+menuMusic.start();
 
 let menuTime = 0;
 let introTime = 0;
@@ -200,6 +203,7 @@ canvas.addEventListener('pointerdown', (e) => {
     state.appState = AppState.MENU;
     menuTime = 0;
     resetDemo();
+    menuMusic.start();
     return;
   }
 });
@@ -207,6 +211,7 @@ canvas.addEventListener('pointerdown', (e) => {
 function applySettings(): void {
   audio.sfxEnabled = save.sfxEnabled;
   music.setEnabled(save.musicEnabled);
+  menuMusic.setEnabled(save.musicEnabled);
   setHapticsEnabled(save.hapticsEnabled);
 }
 
@@ -224,6 +229,7 @@ function startGame(): void {
     onboardingAge = -1;
   }
 
+  menuMusic.stop();
   music.start();
 }
 

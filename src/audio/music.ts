@@ -1,20 +1,24 @@
 /**
  * Music engine — plays a looping MP3 track.
- * Keeps the same public API so the rest of the game is unchanged.
+ * Parameterised by URL so we can have separate menu and game instances.
  */
 export class MusicEngine {
   private audio: HTMLAudioElement | null = null;
   private running = false;
+  private src: string;
   enabled = true;
+
+  constructor(src: string) {
+    this.src = src;
+  }
 
   start(): void {
     if (this.running || !this.enabled) return;
 
-    const el = new Audio('/music.mp3');
+    const el = new Audio(this.src);
     el.loop = true;
     el.volume = 0.45;
     el.play().catch(() => {
-      // Autoplay blocked — will retry on next user interaction
       const resume = () => {
         el.play().catch(() => {});
         document.removeEventListener('pointerdown', resume);
