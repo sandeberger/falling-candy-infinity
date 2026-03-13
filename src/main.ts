@@ -48,6 +48,7 @@ let gameOverScoreSaved = false;
 let settingsOpen = false;
 let installBannerTime = 0;
 let showInstallBanner = false;
+let shareButtonRect = { x: 0, y: 0, w: 0, h: 0 };
 
 // --- Demo mode state ---
 let demoState: GameState = createInitialGameState(Date.now() + 1);
@@ -186,6 +187,11 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.appState === AppState.GAME_OVER) {
+    // Check if share button was tapped
+    if (hitRect(px, py, shareButtonRect)) {
+      shareScore(state);
+      return;
+    }
     state.appState = AppState.MENU;
     menuTime = 0;
     resetDemo();
@@ -614,11 +620,66 @@ function drawGameOverStats(ctx: CanvasRenderingContext2D, cam: ReturnType<typeof
     ctx.fillText('NEW HIGH SCORE!', cx, cy + s * 2.5);
   }
 
+  // Share button
+  const shareBtnW = s * 5;
+  const shareBtnH = s * 1.6;
+  const shareBtnX = cx - shareBtnW / 2;
+  const shareBtnY = cy + s * 3.5;
+  shareButtonRect = { x: shareBtnX, y: shareBtnY, w: shareBtnW, h: shareBtnH };
+
+  const shareGrad = ctx.createLinearGradient(shareBtnX, shareBtnY, shareBtnX, shareBtnY + shareBtnH);
+  shareGrad.addColorStop(0, '#4488ff');
+  shareGrad.addColorStop(1, '#2266cc');
+  ctx.fillStyle = shareGrad;
+  roundRectFill(ctx, shareBtnX, shareBtnY, shareBtnW, shareBtnH, 8);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `700 ${s * 0.75}px Fredoka, sans-serif`;
+  ctx.fillText('SHARE', cx, shareBtnY + shareBtnH / 2);
+
   ctx.fillStyle = '#666666';
   ctx.font = `400 ${s * 0.65}px Fredoka, sans-serif`;
-  ctx.fillText('Tap to continue', cx, cy + s * 4);
+  ctx.fillText('Tap to continue', cx, shareBtnY + shareBtnH + s * 1.2);
 
   ctx.textAlign = 'left';
+}
+
+function hitRect(px: number, py: number, r: { x: number; y: number; w: number; h: number }): boolean {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+function roundRectFill(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  if (w <= 0 || h <= 0) return;
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+async function shareScore(gs: GameState): Promise<void> {
+  const time = Math.floor(gs.playTimeMs / 1000);
+  const mins = Math.floor(time / 60);
+  const secs = time % 60;
+  const text = `Falling Candy Infinity\nScore: ${gs.score} | Stage ${gs.stage + 1} | Chain: ${gs.maxChain}x | ${mins}:${secs.toString().padStart(2, '0')}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Falling Candy Infinity', text });
+    } catch { /* user cancelled */ }
+  } else {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* clipboard unavailable */ }
+  }
 }
 
 requestAnimationFrame(loop);

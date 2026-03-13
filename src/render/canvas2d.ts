@@ -61,6 +61,8 @@ export class Canvas2DRenderer implements Renderer {
   private stageFlash = 0;
   private phaseFlash = 0;
   private phaseFlashColor = '255,150,50';
+  private leanAngle = 0;       // radians, decays toward 0
+  private prevActivePivotCol = -1;
 
   init(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
@@ -238,6 +240,8 @@ export class Canvas2DRenderer implements Renderer {
         const x = boardX + candy.visualCol * cellSize + pad;
         const y = boardY + screenRow * cellSize + pad;
         this.drawCandy(ctx, candy, x, y, innerSize);
+        // Highlight drift — specular gloss that slowly glides across idle candies
+        this.drawHighlightDrift(ctx, x, y, innerSize, candy.id);
       }
     }
 
@@ -263,8 +267,18 @@ export class Canvas2DRenderer implements Renderer {
       }
     }
 
-    // Active formation
+    // Active formation — with side-lean on horizontal movement
     if (state.active) {
+      // Detect horizontal movement → set lean impulse
+      if (this.prevActivePivotCol >= 0 && state.active.pivotCol !== this.prevActivePivotCol) {
+        const dir = state.active.pivotCol - this.prevActivePivotCol;
+        this.leanAngle = Math.max(-0.18, Math.min(0.18, this.leanAngle + dir * 0.12));
+      }
+      this.prevActivePivotCol = state.active.pivotCol;
+      // Decay lean toward 0
+      this.leanAngle *= 0.88;
+      if (Math.abs(this.leanAngle) < 0.002) this.leanAngle = 0;
+
       const smoothRow = state.active.pivotRow + Math.min(state.fallAccumulator, 0.95);
       const interpFormation = { ...state.active, pivotRow: smoothRow };
       const cells = getAbsoluteCells(interpFormation);
@@ -273,13 +287,29 @@ export class Canvas2DRenderer implements Renderer {
         if (screenRow < -1) continue;
         const x = boardX + col * cellSize + pad;
         const y = boardY + screenRow * cellSize + pad;
+
+        // Apply lean rotation around candy center
+        if (this.leanAngle !== 0) {
+          ctx.save();
+          ctx.translate(x + innerSize / 2, y + innerSize / 2);
+          ctx.rotate(this.leanAngle);
+          ctx.translate(-(x + innerSize / 2), -(y + innerSize / 2));
+        }
+
         this.drawCandy(ctx, candy, x, y, innerSize);
         // Active piece glow
         const r = innerSize * 0.18;
         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
         ctx.lineWidth = 2;
         this.roundRectStroke(ctx, x, y, innerSize, innerSize, r);
+
+        if (this.leanAngle !== 0) {
+          ctx.restore();
+        }
       }
+    } else {
+      this.prevActivePivotCol = -1;
+      this.leanAngle = 0;
     }
 
     // FX layer
@@ -836,6 +866,27 @@ export class Canvas2DRenderer implements Renderer {
     ctx.textBaseline = 'middle';
     ctx.fillText(`${hits}`, x + size - 5, y + 6);
     ctx.textAlign = 'left';
+  }
+
+  /** Drifting specular highlight on landed candies */
+  private drawHighlightDrift(
+    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, candyId: number,
+  ): void {
+    // Each candy gets a unique phase offset so glints don't sync
+    const phase = this.dangerPulse * 0.7 + candyId * 1.618; // golden ratio spread
+    // Gloss drifts in a slow elliptical path
+    const gx = x + size * (0.3 + Math.sin(phase) * 0.2);
+    const gy = y + size * (0.25 + Math.cos(phase * 0.8) * 0.15);
+    // Fade in/out as it moves — stronger near top-left, weaker at edges
+    const distFromCenter = Math.abs(Math.sin(phase)) * 0.5;
+    const alpha = 0.18 + distFromCenter * 0.12;
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, size * 0.1, size * 0.06, phase * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   private updateAndDrawParallax(
