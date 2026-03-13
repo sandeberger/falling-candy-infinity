@@ -335,7 +335,7 @@ export class Canvas2DRenderer implements Renderer {
     switch (candy.type) {
       case CandyType.STANDARD:
         this.drawStandardCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.color);
-        this.drawHighlightDrift(ctx, x, y, size, candy.id);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
         break;
 
       case CandyType.JELLY:
@@ -344,7 +344,7 @@ export class Canvas2DRenderer implements Renderer {
 
       case CandyType.STICKY:
         this.drawStickyCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.stickyBonds ?? 0, candy.color);
-        this.drawHighlightDrift(ctx, x, y, size, candy.id);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
         break;
 
       case CandyType.BOMB:
@@ -361,7 +361,7 @@ export class Canvas2DRenderer implements Renderer {
 
       case CandyType.CRACKED:
         this.drawCrackedCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.crackHits ?? 2, candy.color);
-        this.drawHighlightDrift(ctx, x, y, size, candy.id);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
         break;
     }
   }
@@ -869,30 +869,77 @@ export class Canvas2DRenderer implements Renderer {
     ctx.textAlign = 'left';
   }
 
-  /** Drifting specular highlight clipped inside the candy cell */
+  /** Drifting specular highlight clipped inside the actual candy shape */
   private drawHighlightDrift(
-    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, candyId: number,
+    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, candyId: number, color: CandyColor,
   ): void {
     const phase = this.dangerPulse * 0.7 + candyId * 1.618;
-    // Drift stays well within the cell (0.25–0.75 range)
     const gx = x + size * (0.5 + Math.sin(phase) * 0.18);
     const gy = y + size * (0.35 + Math.cos(phase * 0.8) * 0.12);
     const alpha = 0.15 + Math.abs(Math.sin(phase)) * 0.15;
 
-    // Clip to a rounded rect matching the candy shape
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+
     ctx.save();
     ctx.beginPath();
-    const r = size * 0.18;
-    const m = 2; // small inset
-    ctx.moveTo(x + m + r, y + m);
-    ctx.lineTo(x + size - m - r, y + m);
-    ctx.quadraticCurveTo(x + size - m, y + m, x + size - m, y + m + r);
-    ctx.lineTo(x + size - m, y + size - m - r);
-    ctx.quadraticCurveTo(x + size - m, y + size - m, x + size - m - r, y + size - m);
-    ctx.lineTo(x + m + r, y + size - m);
-    ctx.quadraticCurveTo(x + m, y + size - m, x + m, y + size - m - r);
-    ctx.lineTo(x + m, y + m + r);
-    ctx.quadraticCurveTo(x + m, y + m, x + m + r, y + m);
+
+    switch (color) {
+      case CandyColor.BLUE: {
+        // Diamond clip
+        const hr = size * 0.46;
+        const softR = size * 0.06;
+        ctx.moveTo(cx, cy - hr);
+        ctx.quadraticCurveTo(cx + softR, cy - hr + softR, cx + hr, cy);
+        ctx.quadraticCurveTo(cx + hr - softR, cy + softR, cx, cy + hr);
+        ctx.quadraticCurveTo(cx - softR, cy + hr - softR, cx - hr, cy);
+        ctx.quadraticCurveTo(cx - hr + softR, cy - softR, cx, cy - hr);
+        break;
+      }
+      case CandyColor.GREEN: {
+        // Oval clip
+        const rx = size * 0.46;
+        const ry = size * 0.38;
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        break;
+      }
+      case CandyColor.YELLOW: {
+        // Hex clip
+        const hr = size * 0.44;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+          const hx = cx + Math.cos(angle) * hr;
+          const hy = cy + Math.sin(angle) * hr;
+          if (i === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        break;
+      }
+      case CandyColor.PURPLE: {
+        // Teardrop clip
+        const r = size * 0.38;
+        ctx.arc(cx, cy + r * 0.15, r, 0.5, Math.PI - 0.5, false);
+        ctx.quadraticCurveTo(cx - r * 0.3, cy - r * 0.7, cx, cy - r * 1.1);
+        ctx.quadraticCurveTo(cx + r * 0.3, cy - r * 0.7, cx + r * Math.cos(0.5), cy + r * 0.15 + r * Math.sin(0.5));
+        break;
+      }
+      default: {
+        // RED: rounded rect clip
+        const r = size * 0.18;
+        const m = 2;
+        ctx.moveTo(x + m + r, y + m);
+        ctx.lineTo(x + size - m - r, y + m);
+        ctx.quadraticCurveTo(x + size - m, y + m, x + size - m, y + m + r);
+        ctx.lineTo(x + size - m, y + size - m - r);
+        ctx.quadraticCurveTo(x + size - m, y + size - m, x + size - m - r, y + size - m);
+        ctx.lineTo(x + m + r, y + size - m);
+        ctx.quadraticCurveTo(x + m, y + size - m, x + m, y + size - m - r);
+        ctx.lineTo(x + m, y + m + r);
+        ctx.quadraticCurveTo(x + m, y + m, x + m + r, y + m);
+        break;
+      }
+    }
+
     ctx.closePath();
     ctx.clip();
 
