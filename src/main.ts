@@ -573,7 +573,12 @@ function loop(now: number): void {
     }
 
     music.update(frameTime, state.dangerLevel);
-    audio.updateDangerAlarm(state.dangerLevel);
+    // Only run danger alarm during active gameplay
+    if (state.appState === AppState.PLAYING) {
+      audio.updateDangerAlarm(state.dangerLevel);
+    } else {
+      audio.updateDangerAlarm(0);
+    }
     fx.update(frameTime);
 
     const alpha = accumulator / SIM_DT;
