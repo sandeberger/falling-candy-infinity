@@ -114,7 +114,8 @@ export class AudioManager {
 
   stageUp(): void {
     this.playSample('jingle', 0.5);
-    setTimeout(() => this.playSample('robot-levelup', 0.6), 300);
+    this.playSample('robot-stageclear', 0.55);
+    setTimeout(() => this.playSample('robot-levelup', 0.6), 500);
     // Synth chime
     this.playTone(600, 0.1, 0.08, 'sine');
     setTimeout(() => this.playTone(800, 0.1, 0.08, 'sine'), 80);
@@ -226,10 +227,10 @@ export class AudioManager {
   }
 
   phasePressure(): void {
-    this.playSample('robot-stageclear', 0.5);
-    // Synth tension
-    this.playTone(250, 0.12, 0.08, 'sawtooth');
-    setTimeout(() => this.playTone(350, 0.12, 0.06, 'sawtooth'), 80);
+    // Tense rising tone — urgency
+    this.playTone(250, 0.12, 0.12, 'sawtooth');
+    setTimeout(() => this.playTone(350, 0.12, 0.1, 'sawtooth'), 80);
+    setTimeout(() => this.playTone(500, 0.15, 0.08, 'square'), 160);
   }
 
   phaseBreak(): void {
