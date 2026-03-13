@@ -240,8 +240,6 @@ export class Canvas2DRenderer implements Renderer {
         const x = boardX + candy.visualCol * cellSize + pad;
         const y = boardY + screenRow * cellSize + pad;
         this.drawCandy(ctx, candy, x, y, innerSize);
-        // Highlight drift — specular gloss that slowly glides across idle candies
-        this.drawHighlightDrift(ctx, x, y, innerSize, candy.id);
       }
     }
 
@@ -337,6 +335,7 @@ export class Canvas2DRenderer implements Renderer {
     switch (candy.type) {
       case CandyType.STANDARD:
         this.drawStandardCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.color);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id);
         break;
 
       case CandyType.JELLY:
@@ -345,6 +344,7 @@ export class Canvas2DRenderer implements Renderer {
 
       case CandyType.STICKY:
         this.drawStickyCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.stickyBonds ?? 0, candy.color);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id);
         break;
 
       case CandyType.BOMB:
@@ -361,6 +361,7 @@ export class Canvas2DRenderer implements Renderer {
 
       case CandyType.CRACKED:
         this.drawCrackedCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.crackHits ?? 2, candy.color);
+        this.drawHighlightDrift(ctx, x, y, size, candy.id);
         break;
     }
   }
@@ -868,25 +869,40 @@ export class Canvas2DRenderer implements Renderer {
     ctx.textAlign = 'left';
   }
 
-  /** Drifting specular highlight on landed candies */
+  /** Drifting specular highlight clipped inside the candy cell */
   private drawHighlightDrift(
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, candyId: number,
   ): void {
-    // Each candy gets a unique phase offset so glints don't sync
-    const phase = this.dangerPulse * 0.7 + candyId * 1.618; // golden ratio spread
-    // Gloss drifts in a slow elliptical path
-    const gx = x + size * (0.3 + Math.sin(phase) * 0.2);
-    const gy = y + size * (0.25 + Math.cos(phase * 0.8) * 0.15);
-    // Fade in/out as it moves — stronger near top-left, weaker at edges
-    const distFromCenter = Math.abs(Math.sin(phase)) * 0.5;
-    const alpha = 0.18 + distFromCenter * 0.12;
+    const phase = this.dangerPulse * 0.7 + candyId * 1.618;
+    // Drift stays well within the cell (0.25–0.75 range)
+    const gx = x + size * (0.5 + Math.sin(phase) * 0.18);
+    const gy = y + size * (0.35 + Math.cos(phase * 0.8) * 0.12);
+    const alpha = 0.15 + Math.abs(Math.sin(phase)) * 0.15;
+
+    // Clip to a rounded rect matching the candy shape
+    ctx.save();
+    ctx.beginPath();
+    const r = size * 0.18;
+    const m = 2; // small inset
+    ctx.moveTo(x + m + r, y + m);
+    ctx.lineTo(x + size - m - r, y + m);
+    ctx.quadraticCurveTo(x + size - m, y + m, x + size - m, y + m + r);
+    ctx.lineTo(x + size - m, y + size - m - r);
+    ctx.quadraticCurveTo(x + size - m, y + size - m, x + size - m - r, y + size - m);
+    ctx.lineTo(x + m + r, y + size - m);
+    ctx.quadraticCurveTo(x + m, y + size - m, x + m, y + size - m - r);
+    ctx.lineTo(x + m, y + m + r);
+    ctx.quadraticCurveTo(x + m, y + m, x + m + r, y + m);
+    ctx.closePath();
+    ctx.clip();
 
     ctx.globalAlpha = alpha;
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
-    ctx.ellipse(gx, gy, size * 0.1, size * 0.06, phase * 0.3, 0, Math.PI * 2);
+    ctx.ellipse(gx, gy, size * 0.13, size * 0.07, phase * 0.3, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+
+    ctx.restore();
   }
 
   private updateAndDrawParallax(

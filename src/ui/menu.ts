@@ -50,27 +50,18 @@ export function drawMenu(
 ): void {
   const cx = w / 2;
 
-  // Logo with gentle breathing pulse
+  // Logo with gentle breathing pulse — large
   const pulse = 1 + Math.sin(time * 0.002) * 0.02;
-  const logoMaxW = Math.min(w * 0.75, 360);
-  const logoMaxH = h * 0.28;
-  const logoY = h * 0.26;
+  const logoMaxW = Math.min(w * 0.95, 720);
+  const logoMaxH = h * 0.40;
+  const logoY = h * 0.28;
   drawLogoAt(ctx, cx, logoY, logoMaxW, logoMaxH, pulse, 1);
 
-  // "INFINITY" subtitle below logo
+  // Play button
   const titleSize = Math.min(72, w * 0.16);
-  ctx.font = `700 ${titleSize * 1.0}px ${F_TITLE}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const subY = logoY + logoMaxH * 0.5 + titleSize * 0.5;
-  const hue = (time * 0.1) % 360;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillText('INFINITY', cx + 2, subY + 3);
-  ctx.fillStyle = `hsl(${hue}, 70%, 70%)`;
-  ctx.fillText('INFINITY', cx, subY);
-
-  // Play button
-  const btnY = subY + titleSize * 1.2;
+  const btnY = logoY + logoMaxH * 0.5 + titleSize * 0.6;
   const btnPulse = (Math.sin(time * 0.004) + 1) * 0.5;
   const btnAlpha = 0.7 + btnPulse * 0.3;
   ctx.globalAlpha = btnAlpha;
@@ -277,82 +268,11 @@ export function drawIntro(
     const scale = scaleRaw + breathe;
     const alpha = Math.min(1, logoT * 2.5);
 
-    const maxW = Math.min(w * 0.8, 400);
-    const maxH = h * 0.32;
+    const maxW = Math.min(w * 0.95, 720);
+    const maxH = h * 0.40;
     drawLogoAt(ctx, cx, cy, maxW, maxH, scale, alpha);
   }
 
-  // --- "INFINITY" — scales up from center ---
-  const subStart = 0.50;
-  const subT = Math.max(0, Math.min(1, (t - subStart) / 0.18));
-  if (subT > 0) {
-    const titleSize = Math.min(38, w * 0.085);
-    const subSize = titleSize * 1.4;
-    ctx.font = `700 ${subSize}px ${F_TITLE}`;
-    const subY = cy + h * 0.2;
-
-    // Scale: starts small, overshoots, settles
-    const scale = subT < 1
-      ? subT * (2 - subT) * (1 + 0.15 * Math.sin(subT * Math.PI * 2))
-      : 1;
-    const subAlpha = Math.min(1, subT * 3);
-
-    ctx.save();
-    ctx.translate(cx, subY);
-    ctx.scale(scale, scale);
-
-    // Rainbow shimmer
-    const hue = (time * 0.15) % 360;
-
-    // Glow
-    ctx.shadowColor = `hsl(${hue}, 80%, 60%)`;
-    ctx.shadowBlur = 20 + Math.sin(time * 0.008) * 8;
-    ctx.globalAlpha = subAlpha * 0.5;
-    ctx.fillStyle = `hsl(${hue}, 80%, 70%)`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('INFINITY', 0, 0);
-
-    // Shadow
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = subAlpha * 0.4;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillText('INFINITY', 2, 3);
-
-    // Main text
-    ctx.globalAlpha = subAlpha;
-    ctx.fillStyle = `hsl(${hue}, 70%, 72%)`;
-    ctx.fillText('INFINITY', 0, 0);
-
-    ctx.restore();
-    ctx.shadowBlur = 0;
-
-    // Sparkle burst at the moment of reveal
-    if (subT > 0.15 && subT < 0.5) {
-      const sparkT = (subT - 0.15) / 0.35;
-      const sparkCount = 12;
-      for (let i = 0; i < sparkCount; i++) {
-        const angle = (i / sparkCount) * Math.PI * 2 + sparkT * 0.8;
-        const dist = sparkT * w * 0.25;
-        const sx = cx + Math.cos(angle) * dist;
-        const sy = subY + Math.sin(angle) * dist * 0.5;
-        const sparkSize = 3 * (1 - sparkT);
-        ctx.globalAlpha = (1 - sparkT) * 0.7;
-        ctx.fillStyle = INTRO_COLORS[i % 5];
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - sparkSize);
-        ctx.lineTo(sx + sparkSize * 0.3, sy - sparkSize * 0.3);
-        ctx.lineTo(sx + sparkSize, sy);
-        ctx.lineTo(sx + sparkSize * 0.3, sy + sparkSize * 0.3);
-        ctx.lineTo(sx, sy + sparkSize);
-        ctx.lineTo(sx - sparkSize * 0.3, sy + sparkSize * 0.3);
-        ctx.lineTo(sx - sparkSize, sy);
-        ctx.lineTo(sx - sparkSize * 0.3, sy - sparkSize * 0.3);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-  }
   ctx.globalAlpha = 1;
 
   // --- "Tap to skip" hint ---
