@@ -34,14 +34,20 @@ const F_UI = 'Fredoka, sans-serif';
 const F_ACTION = 'Bangers, cursive';
 
 // Ambient background particles
-interface BgParticle {
+// --- Parallax background system ---
+interface ParallaxItem {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
   size: number;
   color: string;
   alpha: number;
+  baseSpeed: number; // vertical drift speed
+  seed: number;      // for per-item variation
+}
+
+interface ParallaxLayer {
+  items: ParallaxItem[];
+  speedMultiplier: number; // relative to base drift
 }
 
 export class Canvas2DRenderer implements Renderer {
@@ -50,7 +56,8 @@ export class Canvas2DRenderer implements Renderer {
   private camera!: Camera;
   private fx: FXManager | null = null;
   private dangerPulse = 0;
-  private bgParticles: BgParticle[] = [];
+  private parallaxLayers: ParallaxLayer[] = [];
+  private parallaxTime = 0;
   private stageFlash = 0;
   private phaseFlash = 0;
   private phaseFlashColor = '255,150,50';
@@ -59,22 +66,60 @@ export class Canvas2DRenderer implements Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.resize(window.innerWidth, window.innerHeight);
-    this.initBgParticles();
+    this.initParallax();
   }
 
-  private initBgParticles(): void {
+  private initParallax(): void {
     const colors = ['#ff4444', '#4488ff', '#44dd44', '#ffdd44', '#cc44ff'];
-    for (let i = 0; i < 15; i++) {
-      this.bgParticles.push({
-        x: Math.random() * 600,
-        y: Math.random() * 900,
-        vx: (Math.random() - 0.5) * 0.15,
-        vy: 0.1 + Math.random() * 0.2,
-        size: 3 + Math.random() * 5,
-        color: colors[i % 5],
-        alpha: 0.04 + Math.random() * 0.06,
+    const dimColors = ['#442244', '#333366', '#224433', '#444422', '#3a2244'];
+
+    // Far layer: large dim hexagonal shapes, very slow
+    const farItems: ParallaxItem[] = [];
+    for (let i = 0; i < 8; i++) {
+      farItems.push({
+        x: Math.random() * 800,
+        y: Math.random() * 1200,
+        size: 50 + Math.random() * 70,
+        color: dimColors[i % 5],
+        alpha: 0.06 + Math.random() * 0.04,
+        baseSpeed: 0.04 + Math.random() * 0.02,
+        seed: Math.random() * 1000,
       });
     }
+
+    // Mid layer: bokeh circles, medium speed
+    const midItems: ParallaxItem[] = [];
+    for (let i = 0; i < 14; i++) {
+      midItems.push({
+        x: Math.random() * 800,
+        y: Math.random() * 1200,
+        size: 8 + Math.random() * 18,
+        color: colors[i % 5],
+        alpha: 0.08 + Math.random() * 0.07,
+        baseSpeed: 0.1 + Math.random() * 0.1,
+        seed: Math.random() * 1000,
+      });
+    }
+
+    // Near layer: small sparkles/streaks, fast
+    const nearItems: ParallaxItem[] = [];
+    for (let i = 0; i < 20; i++) {
+      nearItems.push({
+        x: Math.random() * 800,
+        y: Math.random() * 1200,
+        size: 2 + Math.random() * 4,
+        color: colors[i % 5],
+        alpha: 0.12 + Math.random() * 0.12,
+        baseSpeed: 0.2 + Math.random() * 0.25,
+        seed: Math.random() * 1000,
+      });
+    }
+
+    this.parallaxLayers = [
+      { items: farItems, speedMultiplier: 0.3 },
+      { items: midItems, speedMultiplier: 0.7 },
+      { items: nearItems, speedMultiplier: 1.2 },
+    ];
   }
 
   setFX(fx: FXManager): void {
@@ -132,15 +177,15 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillStyle = '#1a0a2e';
     ctx.fillRect(-10, -10, cam.logicalW + 20, cam.logicalH + 20);
 
-    // Background ambient particles
-    this.updateAndDrawBgParticles(ctx, cam, frameDt);
+    // Parallax background layers
+    this.updateAndDrawParallax(ctx, cam, frameDt, state.dangerLevel);
 
-    // Board background with subtle gradient
+    // Board background — semi-transparent so parallax bleeds through
     const boardW = COLS * cellSize;
     const boardH = ROWS * cellSize;
     const bgGrad = ctx.createLinearGradient(boardX, boardY, boardX, boardY + boardH);
-    bgGrad.addColorStop(0, '#0e0618');
-    bgGrad.addColorStop(1, '#150a24');
+    bgGrad.addColorStop(0, 'rgba(14,6,24,0.82)');
+    bgGrad.addColorStop(1, 'rgba(21,10,36,0.82)');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(boardX, boardY, boardW, boardH);
 
@@ -582,19 +627,80 @@ export class Canvas2DRenderer implements Renderer {
     ctx.textAlign = 'left';
   }
 
-  private updateAndDrawBgParticles(ctx: CanvasRenderingContext2D, cam: Camera, dt: number): void {
-    for (const p of this.bgParticles) {
-      p.x += p.vx * dt * 0.06;
-      p.y += p.vy * dt * 0.06;
-      if (p.y > cam.logicalH + 10) { p.y = -10; p.x = Math.random() * cam.logicalW; }
-      if (p.x < -10) p.x = cam.logicalW + 10;
-      if (p.x > cam.logicalW + 10) p.x = -10;
+  private updateAndDrawParallax(
+    ctx: CanvasRenderingContext2D,
+    cam: Camera,
+    dt: number,
+    dangerLevel: number,
+  ): void {
+    this.parallaxTime += dt;
+    // Danger intensifies near layer speed and alpha
+    const dangerBoost = Math.max(0, dangerLevel - 0.3) * 1.5;
 
-      ctx.globalAlpha = p.alpha;
-      ctx.fillStyle = p.color;
-      this.roundRectFill(ctx, p.x, p.y, p.size, p.size, p.size * 0.25);
+    for (let li = 0; li < this.parallaxLayers.length; li++) {
+      const layer = this.parallaxLayers[li];
+      const isNear = li === 2;
+      const isFar = li === 0;
+      const speedMul = layer.speedMultiplier * (1 + (isNear ? dangerBoost : 0));
+
+      for (const p of layer.items) {
+        // Drift upward
+        p.y -= p.baseSpeed * speedMul * dt * 0.06;
+        // Gentle horizontal sway
+        p.x += Math.sin(this.parallaxTime * 0.0005 + p.seed) * 0.02 * dt * 0.06;
+
+        // Wrap around
+        if (p.y < -p.size - 10) {
+          p.y = cam.logicalH + p.size + Math.random() * 20;
+          p.x = Math.random() * cam.logicalW;
+        }
+        if (p.x < -p.size - 10) p.x = cam.logicalW + p.size;
+        if (p.x > cam.logicalW + p.size + 10) p.x = -p.size;
+
+        const alphaBoost = isNear ? dangerBoost * 0.3 : 0;
+        ctx.globalAlpha = Math.min(0.25, p.alpha + alphaBoost);
+        ctx.fillStyle = p.color;
+
+        if (isFar) {
+          // Far layer: hexagonal shapes
+          this.drawHexagon(ctx, p.x, p.y, p.size * 0.5);
+        } else if (isNear) {
+          // Near layer: light streaks
+          const streakLen = p.size * (2 + dangerBoost);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x + p.size * 0.3, p.y + streakLen);
+          ctx.lineTo(p.x - p.size * 0.3, p.y + streakLen);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // Mid layer: bokeh circles
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          // Inner highlight
+          ctx.globalAlpha = ctx.globalAlpha * 0.4;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(p.x - p.size * 0.15, p.y - p.size * 0.15, p.size * 0.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
     ctx.globalAlpha = 1;
+  }
+
+  private drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
   }
 
   private updateVisualPositions(state: GameState, frameDt: number): void {
