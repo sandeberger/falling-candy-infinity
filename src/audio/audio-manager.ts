@@ -1,3 +1,26 @@
+// Preloaded sample buffers keyed by name
+const sampleCache = new Map<string, HTMLAudioElement>();
+
+function preload(name: string, url: string): void {
+  const el = new Audio(url);
+  el.preload = 'auto';
+  sampleCache.set(name, el);
+}
+
+// Preload all samples on module load
+preload('pop', '/sfx/pop.mp3');
+preload('swoosh', '/sfx/swoosh.mp3');
+preload('jingle', '/sfx/jingle.mp3');
+preload('robot-double', '/sfx/robot-double.mp3');
+preload('robot-triple', '/sfx/robot-triple.mp3');
+preload('robot-amazing', '/sfx/robot-amazing.mp3');
+preload('robot-unstoppable', '/sfx/robot-unstoppable.mp3');
+preload('robot-levelup', '/sfx/robot-levelup.mp3');
+preload('robot-stageclear', '/sfx/robot-stageclear.mp3');
+preload('robot-gameover', '/sfx/robot-gameover.mp3');
+preload('robot-sugarrush', '/sfx/robot-sugarrush.mp3');
+preload('robot-ready', '/sfx/robot-ready.mp3');
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   sfxEnabled = true;
@@ -32,20 +55,44 @@ export class AudioManager {
     osc.stop(ctx.currentTime + duration);
   }
 
+  /** Play a preloaded sample by name. Clones the audio element so overlapping plays work. */
+  private playSample(name: string, volume = 0.5): void {
+    if (!this.sfxEnabled) return;
+    const src = sampleCache.get(name);
+    if (!src) return;
+    const clone = src.cloneNode(true) as HTMLAudioElement;
+    clone.volume = volume;
+    clone.play().catch(() => {});
+  }
+
   pop(chain: number): void {
+    this.playSample('pop', 0.5);
+    // Synth layer — pitch rises with chain
     const baseFreq = 440 + chain * 80;
-    this.playTone(baseFreq, 0.1, 0.15, 'sine');
-    this.playTone(baseFreq * 1.5, 0.08, 0.1, 'sine');
+    this.playTone(baseFreq, 0.08, 0.06, 'sine');
   }
 
   drop(): void {
-    this.playTone(120, 0.08, 0.12, 'triangle');
+    this.playSample('swoosh', 0.4);
+    // Synth thud
+    this.playTone(120, 0.08, 0.08, 'triangle');
   }
 
   chain(depth: number): void {
+    // Robot voice callout
+    if (depth >= 5) {
+      this.playSample('robot-unstoppable', 0.6);
+    } else if (depth >= 4) {
+      this.playSample('robot-amazing', 0.6);
+    } else if (depth >= 3) {
+      this.playSample('robot-triple', 0.6);
+    } else {
+      this.playSample('robot-double', 0.6);
+    }
+    // Synth fanfare layer
     const freq = 520 + depth * 100;
-    this.playTone(freq, 0.15, 0.2, 'square');
-    setTimeout(() => this.playTone(freq * 1.25, 0.12, 0.15, 'square'), 60);
+    this.playTone(freq, 0.12, 0.1, 'square');
+    setTimeout(() => this.playTone(freq * 1.25, 0.1, 0.08, 'square'), 60);
   }
 
   move(): void {
@@ -58,15 +105,20 @@ export class AudioManager {
 
   gameOver(): void {
     this.stopAlarm();
-    this.playTone(200, 0.3, 0.2, 'sawtooth');
-    setTimeout(() => this.playTone(150, 0.4, 0.15, 'sawtooth'), 200);
-    setTimeout(() => this.playTone(100, 0.5, 0.12, 'sawtooth'), 400);
+    this.playSample('robot-gameover', 0.7);
+    // Synth descend
+    this.playTone(200, 0.3, 0.1, 'sawtooth');
+    setTimeout(() => this.playTone(150, 0.4, 0.08, 'sawtooth'), 200);
+    setTimeout(() => this.playTone(100, 0.5, 0.06, 'sawtooth'), 400);
   }
 
   stageUp(): void {
-    this.playTone(600, 0.1, 0.15, 'sine');
-    setTimeout(() => this.playTone(800, 0.1, 0.15, 'sine'), 80);
-    setTimeout(() => this.playTone(1000, 0.15, 0.12, 'sine'), 160);
+    this.playSample('jingle', 0.5);
+    setTimeout(() => this.playSample('robot-levelup', 0.6), 300);
+    // Synth chime
+    this.playTone(600, 0.1, 0.08, 'sine');
+    setTimeout(() => this.playTone(800, 0.1, 0.08, 'sine'), 80);
+    setTimeout(() => this.playTone(1000, 0.15, 0.06, 'sine'), 160);
   }
 
   bombExplode(): void {
@@ -90,19 +142,20 @@ export class AudioManager {
   }
 
   abilityActivate(): void {
-    this.playTone(400, 0.1, 0.2, 'sine');
-    setTimeout(() => this.playTone(600, 0.1, 0.18, 'sine'), 60);
-    setTimeout(() => this.playTone(800, 0.1, 0.16, 'sine'), 120);
-    setTimeout(() => this.playTone(1200, 0.2, 0.2, 'sine'), 180);
+    this.playSample('robot-sugarrush', 0.7);
+    // Synth power-up sweep
+    this.playTone(400, 0.1, 0.1, 'sine');
+    setTimeout(() => this.playTone(600, 0.1, 0.08, 'sine'), 60);
+    setTimeout(() => this.playTone(800, 0.1, 0.06, 'sine'), 120);
   }
 
   abilityReady(): void {
-    this.playTone(880, 0.08, 0.12, 'sine');
-    setTimeout(() => this.playTone(880, 0.08, 0.12, 'sine'), 120);
+    this.playSample('robot-ready', 0.6);
+    // Synth ping
+    this.playTone(880, 0.08, 0.06, 'sine');
   }
 
   danger(): void {
-    // One-shot trigger kept for the initial cross-threshold event
     this.playTone(150, 0.2, 0.1, 'square');
     setTimeout(() => this.playTone(150, 0.2, 0.1, 'square'), 300);
   }
@@ -121,8 +174,7 @@ export class AudioManager {
     } else if (!shouldAlarm && this.alarmActive) {
       this.stopAlarm();
     } else if (shouldAlarm && this.alarmActive && this.alarmGain) {
-      // Scale volume with danger intensity (0.5→1.0 maps to 0.06→0.14)
-      const intensity = (dangerLevel - 0.5) * 2; // 0→1
+      const intensity = (dangerLevel - 0.5) * 2;
       this.alarmGain.gain.value = 0.06 + intensity * 0.08;
     }
   }
@@ -130,21 +182,18 @@ export class AudioManager {
   private startAlarm(dangerLevel: number): void {
     const ctx = this.ensureCtx();
 
-    // Main alarm tone — alternates between two pitches via LFO
     const osc = ctx.createOscillator();
     osc.type = 'square';
     osc.frequency.value = 220;
 
-    // LFO modulates frequency for the classic two-tone alarm sweep
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
     lfo.type = 'square';
-    lfo.frequency.value = 3; // 3 Hz pulse = ~classic alarm rate
-    lfoGain.gain.value = 80; // sweeps 220 ± 80 Hz → between 140 and 300
+    lfo.frequency.value = 3;
+    lfoGain.gain.value = 80;
     lfo.connect(lfoGain);
     lfoGain.connect(osc.frequency);
 
-    // Output gain
     const gain = ctx.createGain();
     const intensity = Math.max(0, (dangerLevel - 0.5) * 2);
     gain.gain.value = 0.06 + intensity * 0.08;
@@ -177,10 +226,10 @@ export class AudioManager {
   }
 
   phasePressure(): void {
-    // Tense rising tone — urgency
-    this.playTone(250, 0.12, 0.12, 'sawtooth');
-    setTimeout(() => this.playTone(350, 0.12, 0.1, 'sawtooth'), 80);
-    setTimeout(() => this.playTone(500, 0.15, 0.08, 'square'), 160);
+    this.playSample('robot-stageclear', 0.5);
+    // Synth tension
+    this.playTone(250, 0.12, 0.08, 'sawtooth');
+    setTimeout(() => this.playTone(350, 0.12, 0.06, 'sawtooth'), 80);
   }
 
   phaseBreak(): void {
@@ -191,14 +240,11 @@ export class AudioManager {
   }
 
   introSting(): void {
-    // Warm ascending chime — candy factory powering up
-    this.playTone(330, 0.2, 0.1, 'sine');
-    setTimeout(() => this.playTone(440, 0.2, 0.12, 'sine'), 100);
-    setTimeout(() => this.playTone(550, 0.2, 0.12, 'sine'), 200);
-    setTimeout(() => this.playTone(660, 0.15, 0.14, 'sine'), 320);
-    setTimeout(() => this.playTone(880, 0.3, 0.16, 'sine'), 440);
-    // Shimmer overtone
-    setTimeout(() => this.playTone(1320, 0.4, 0.06, 'sine'), 500);
+    this.playSample('jingle', 0.5);
+    // Synth shimmer
+    this.playTone(330, 0.2, 0.06, 'sine');
+    setTimeout(() => this.playTone(440, 0.2, 0.06, 'sine'), 100);
+    setTimeout(() => this.playTone(660, 0.15, 0.06, 'sine'), 250);
   }
 
   destroy(): void {
