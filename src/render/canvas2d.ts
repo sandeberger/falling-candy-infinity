@@ -1046,14 +1046,31 @@ export class Canvas2DRenderer implements Renderer {
     const boardRight = boardX + COLS * cellSize;
     const boardH = ROWS * cellSize;
 
-    // Score with subtle shadow
+    // Pause button — left side of HUD
+    const pauseS = Math.max(20, cellSize * 0.5);
+    const pauseX = boardX + 4;
+    const pauseY = HUD_HEIGHT / 2 - pauseS / 2 - 8;
+    this.pauseBtnRect = { x: pauseX - 6, y: pauseY - 6, w: pauseS + 12, h: pauseS + 12 };
+
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    this.roundRectFill(ctx, pauseX - 6, pauseY - 6, pauseS + 12, pauseS + 12, 6);
+    // Two vertical bars
+    ctx.fillStyle = '#aaaaaa';
+    const barW = pauseS * 0.22;
+    const barH = pauseS * 0.7;
+    const barY = pauseY + (pauseS - barH) / 2;
+    this.roundRectFill(ctx, pauseX + pauseS * 0.22, barY, barW, barH, 2);
+    this.roundRectFill(ctx, pauseX + pauseS * 0.56, barY, barW, barH, 2);
+
+    // Score with subtle shadow — to the right of pause button
+    const scoreX = pauseX + pauseS + 16;
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.font = `700 ${fontSize}px ${F_UI}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillText(`Score: ${state.score}`, boardX + 9, HUD_HEIGHT / 2 - 7);
+    ctx.fillText(`Score: ${state.score}`, scoreX + 1, HUD_HEIGHT / 2 - 7);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`Score: ${state.score}`, boardX + 8, HUD_HEIGHT / 2 - 8);
+    ctx.fillText(`Score: ${state.score}`, scoreX, HUD_HEIGHT / 2 - 8);
 
     // Stage + phase
     ctx.font = `400 ${fontSize * 0.8}px ${F_UI}`;
@@ -1100,22 +1117,6 @@ export class Canvas2DRenderer implements Renderer {
       ctx.font = `400 ${fontSize * 0.6}px ${F_UI}`;
       ctx.fillText('ability', meterX, meterY - 10);
     }
-
-    // Pause button — top-right
-    const pauseS = Math.max(20, cellSize * 0.5);
-    const pauseX = boardRight - pauseS - 4;
-    const pauseY = HUD_HEIGHT / 2 - pauseS / 2 - 8;
-    this.pauseBtnRect = { x: pauseX - 6, y: pauseY - 6, w: pauseS + 12, h: pauseS + 12 };
-
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    this.roundRectFill(ctx, pauseX - 6, pauseY - 6, pauseS + 12, pauseS + 12, 6);
-    // Two vertical bars
-    ctx.fillStyle = '#aaaaaa';
-    const barW = pauseS * 0.22;
-    const barH = pauseS * 0.7;
-    const barY = pauseY + (pauseS - barH) / 2;
-    this.roundRectFill(ctx, pauseX + pauseS * 0.22, barY, barW, barH, 2);
-    this.roundRectFill(ctx, pauseX + pauseS * 0.56, barY, barW, barH, 2);
 
     // Next preview
     if (state.next) {
