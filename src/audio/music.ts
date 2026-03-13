@@ -1,56 +1,42 @@
 /**
  * Music engine — plays a looping MP3 track.
- * Preloads the audio on construction so it's ready when start() is called.
+ * Creates a fresh Audio element inside start() so it's within the
+ * user-gesture context that mobile browsers require for autoplay.
  */
 export class MusicEngine {
-  private audio: HTMLAudioElement;
+  private audio: HTMLAudioElement | null = null;
   private running = false;
-  private wantPlay = false; // true if start() was called but audio wasn't ready
+  private src: string;
   enabled = true;
 
   constructor(src: string) {
-    const el = new Audio(src);
-    el.loop = true;
-    el.volume = 0.45;
-    el.preload = 'auto';
-    // When audio becomes playable, auto-start if we were waiting
-    el.addEventListener('canplaythrough', () => {
-      if (this.wantPlay && !this.running) {
-        this.tryPlay();
-      }
-    }, { once: true });
-    this.audio = el;
+    this.src = src;
   }
 
   start(): void {
     if (this.running || !this.enabled) return;
-    this.wantPlay = true;
-    this.tryPlay();
-  }
 
-  private tryPlay(): void {
-    if (this.running) return;
-    this.audio.play()
-      .then(() => {
-        this.running = true;
-        this.wantPlay = false;
-      })
+    // Create element inside user gesture — critical for mobile autoplay
+    if (!this.audio) {
+      const el = new Audio(this.src);
+      el.loop = true;
+      el.volume = 0.45;
+      this.audio = el;
+    }
+
+    const el = this.audio;
+    el.play()
+      .then(() => { this.running = true; })
       .catch(() => {
-        // Autoplay blocked or not loaded yet — retry on next user interaction
-        const retry = () => {
-          if (this.wantPlay && !this.running) {
-            this.audio.play()
-              .then(() => {
-                this.running = true;
-                this.wantPlay = false;
-              })
+        // Not ready yet — retry when buffered enough
+        const onReady = () => {
+          if (!this.running && this.enabled) {
+            el.play()
+              .then(() => { this.running = true; })
               .catch(() => {});
           }
-          document.removeEventListener('pointerdown', retry);
-          document.removeEventListener('keydown', retry);
         };
-        document.addEventListener('pointerdown', retry, { once: true });
-        document.addEventListener('keydown', retry, { once: true });
+        el.addEventListener('canplaythrough', onReady, { once: true });
       });
   }
 
@@ -70,16 +56,17 @@ export class MusicEngine {
   }
 
   stop(): void {
-    if (!this.running && !this.wantPlay) return;
+    if (!this.running) return;
     this.running = false;
-    this.wantPlay = false;
-    this.audio.pause();
-    this.audio.currentTime = 0;
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+    }
   }
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    if (!enabled && (this.running || this.wantPlay)) {
+    if (!enabled && this.running) {
       this.stop();
     }
   }
