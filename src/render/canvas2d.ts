@@ -355,7 +355,7 @@ export class Canvas2DRenderer implements Renderer {
         break;
 
       case CandyType.JELLY:
-        this.drawJellyCandy(ctx, x, y, size, r, baseColor, lightColor);
+        this.drawJellyCandy(ctx, x, y, size, r, baseColor, lightColor, candy.id);
         break;
 
       case CandyType.STICKY:
@@ -628,46 +628,60 @@ export class Canvas2DRenderer implements Renderer {
   }
 
   private drawJellyCandy(
-    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
-    base: string, light: string,
+    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, _r: number,
+    base: string, light: string, id: number,
   ): void {
     const jR = size * 0.28;
+    const t = this.dangerPulse;
+    const phase = id * 1.7; // per-candy phase offset
 
-    // Wobble-effect via slight squash
-    const wobble = Math.sin(this.dangerPulse * 3) * 0.03;
+    // Multi-frequency wobble — bouncy gelatin feel
+    const wobbleX = Math.sin(t * 2.8 + phase) * 0.045 + Math.sin(t * 4.5 + phase) * 0.02;
+    const wobbleY = Math.cos(t * 2.8 + phase) * 0.045 + Math.cos(t * 4.5 + phase) * 0.02;
+    // Vertical bounce hop
+    const bounce = Math.abs(Math.sin(t * 1.8 + phase)) * 2;
+
     ctx.save();
-    ctx.translate(x + size / 2, y + size / 2);
-    ctx.scale(1 + wobble, 1 - wobble);
+    ctx.translate(x + size / 2, y + size / 2 - bounce);
+    ctx.scale(1 + wobbleX, 1 + wobbleY);
     ctx.translate(-(x + size / 2), -(y + size / 2));
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    this.roundRectFill(ctx, x + 2, y + 2, size, size, jR);
+    // Shadow — squishes when jelly bounces up
+    const shadowScale = 1 + bounce * 0.04;
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.save();
+    ctx.translate(x + size / 2, y + size + bounce);
+    ctx.scale(shadowScale, 0.5);
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
-    // Body (slightly transparent)
-    ctx.globalAlpha = 0.8;
+    // Body — translucent, rounded, jiggly
+    ctx.globalAlpha = 0.75;
     ctx.fillStyle = base;
     this.roundRectFill(ctx, x + 1, y + 1, size - 2, size - 2, jR);
 
-    // Inner glow
-    ctx.globalAlpha = 0.25;
+    // Inner glow — slightly offset by wobble for depth
+    const glowOff = Math.sin(t * 3.2 + phase) * 1.5;
+    ctx.globalAlpha = 0.3;
     ctx.fillStyle = light;
-    this.roundRectFill(ctx, x + 3, y + 3, size - 6, size - 6, jR - 2);
+    this.roundRectFill(ctx, x + 3 + glowOff, y + 3, size - 6, size - 6, jR - 2);
     ctx.globalAlpha = 1;
 
-    // Gloss
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    // Jiggling gloss highlight — moves around the surface
+    const glossX = x + size * (0.32 + Math.sin(t * 2.1 + phase) * 0.06);
+    const glossY = y + size * (0.28 + Math.cos(t * 2.7 + phase) * 0.04);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.beginPath();
-    ctx.ellipse(x + size * 0.35, y + size * 0.3, size * 0.18, size * 0.12, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(glossX, glossY, size * 0.17, size * 0.11, -0.3, 0, Math.PI * 2);
     ctx.fill();
 
-    // "J" label
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = `bold ${Math.max(7, size * 0.22)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('J', x + size / 2, y + size - 2);
-    ctx.textAlign = 'left';
+    // Secondary smaller gloss
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(x + size * 0.65, y + size * 0.6, size * 0.06, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }
