@@ -306,6 +306,7 @@ function processEvents(): void {
         audio.chain(event.chain ?? 2);
         hapticChain(event.chain ?? 2);
         renderer.triggerBloomFlash(Math.min(0.3 + (event.chain ?? 2) * 0.15, 1));
+        renderer.triggerComboFlare(Math.min((event.chain ?? 2) * 0.2, 1));
         break;
       case 'move':
         audio.move();

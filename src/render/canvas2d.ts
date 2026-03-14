@@ -58,6 +58,8 @@ export class Canvas2DRenderer implements Renderer {
   private dangerPulse = 0;
   private parallaxLayers: ParallaxLayer[] = [];
   private parallaxTime = 0;
+  private ambientHue = 0;       // slow hue drift for ambient glow
+  private comboFlare = 0;       // combo intensity flare
   private stageFlash = 0;
   private phaseFlash = 0;
   private phaseFlashColor = '255,150,50';
@@ -72,9 +74,13 @@ export class Canvas2DRenderer implements Renderer {
     this.initParallax();
   }
 
+  triggerComboFlare(intensity: number): void {
+    this.comboFlare = Math.min(intensity, 1);
+  }
+
   private initParallax(): void {
-    const colors = ['#ff4444', '#4488ff', '#44dd44', '#ffdd44', '#cc44ff'];
-    const dimColors = ['#442244', '#333366', '#224433', '#444422', '#3a2244'];
+    const colors = ['#cc3366', '#3388cc', '#33bb77', '#ccaa33', '#9944cc'];
+    const dimColors = ['#2a1133', '#1a2244', '#162a22', '#2a2818', '#261833'];
 
     // Far layer: large dim hexagonal shapes, very slow
     const farItems: ParallaxItem[] = [];
@@ -184,26 +190,80 @@ export class Canvas2DRenderer implements Renderer {
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    // Clear
-    ctx.fillStyle = '#1a0a2e';
+    // --- Dark Candy Neon Factory background ---
+    const boardW = COLS * cellSize;
+    const boardH = ROWS * cellSize;
+    this.ambientHue += frameDt * 0.003;
+    // Combo flare decay
+    this.comboFlare = Math.max(0, this.comboFlare - frameDt * 0.002);
+
+    // Deep plum base
+    const baseBg = ctx.createLinearGradient(0, 0, 0, cam.logicalH);
+    baseBg.addColorStop(0, '#0d0618');
+    baseBg.addColorStop(0.4, '#1a0a2e');
+    baseBg.addColorStop(1, '#120822');
+    ctx.fillStyle = baseBg;
     ctx.fillRect(-10, -10, cam.logicalW + 20, cam.logicalH + 20);
+
+    // Cyan center glow — state-reactive
+    const glowHue = state.dangerLevel > 0.5 ? 0 : state.chain >= 2 ? 60 : 190;
+    const glowAlpha = 0.06 + this.comboFlare * 0.08 + Math.sin(this.ambientHue * 0.7) * 0.015;
+    const cx = cam.logicalW / 2;
+    const cy = cam.logicalH * 0.45;
+    const glowR = Math.max(boardW, boardH) * 0.7;
+    const centerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    centerGlow.addColorStop(0, `hsla(${glowHue}, 70%, 50%, ${glowAlpha})`);
+    centerGlow.addColorStop(0.5, `hsla(${glowHue}, 60%, 30%, ${glowAlpha * 0.3})`);
+    centerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = centerGlow;
+    ctx.fillRect(-10, -10, cam.logicalW + 20, cam.logicalH + 20);
+
+    // Syrup streaks — diagonal energy lines drifting slowly
+    this.drawSyrupStreaks(ctx, cam, frameDt);
+
+    // Factory side elements
+    this.drawFactoryDecor(ctx, cam, boardX, boardY, boardW, boardH);
 
     // Parallax background layers
     this.updateAndDrawParallax(ctx, cam, frameDt, state.dangerLevel);
 
-    // Board background — semi-transparent so parallax bleeds through
-    const boardW = COLS * cellSize;
-    const boardH = ROWS * cellSize;
+    // --- Glassy board surface ---
+    // Outer neon border glow
+    const borderGlowSize = 6;
+    const borderHue = state.dangerLevel > 0.5 ? 0 :
+                      state.chain >= 3 ? 50 :
+                      state.stagePhase === 'pressure' ? 30 : 270;
+    const borderPulse = 0.15 + Math.sin(this.ambientHue * 1.2) * 0.05 + this.comboFlare * 0.2;
+    ctx.shadowColor = `hsla(${borderHue}, 80%, 60%, ${borderPulse})`;
+    ctx.shadowBlur = borderGlowSize * 2;
+    ctx.strokeStyle = `hsla(${borderHue}, 60%, 50%, ${borderPulse * 0.6})`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boardX - 1, boardY - 1, boardW + 2, boardH + 2);
+    ctx.shadowBlur = 0;
+
+    // Board fill — dark glass with subtle gradient
     const bgGrad = ctx.createLinearGradient(boardX, boardY, boardX, boardY + boardH);
-    bgGrad.addColorStop(0, 'rgba(14,6,24,0.82)');
-    bgGrad.addColorStop(1, 'rgba(21,10,36,0.82)');
+    bgGrad.addColorStop(0, 'rgba(12,5,22,0.88)');
+    bgGrad.addColorStop(0.5, 'rgba(16,8,28,0.85)');
+    bgGrad.addColorStop(1, 'rgba(10,4,18,0.9)');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(boardX, boardY, boardW, boardH);
 
-    // Board border glow
-    ctx.strokeStyle = 'rgba(100,60,180,0.3)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(boardX - 1, boardY - 1, boardW + 2, boardH + 2);
+    // Sugar crystal texture — faint sparkle dots
+    this.drawSugarTexture(ctx, boardX, boardY, boardW, boardH);
+
+    // Glass reflection — subtle top edge sheen
+    const sheenH = boardH * 0.08;
+    const sheen = ctx.createLinearGradient(boardX, boardY, boardX, boardY + sheenH);
+    sheen.addColorStop(0, 'rgba(200,180,255,0.06)');
+    sheen.addColorStop(1, 'rgba(200,180,255,0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(boardX, boardY, boardW, sheenH);
+
+    // Inner border — polished caramel edge
+    ctx.strokeStyle = 'rgba(180,140,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boardX + 1, boardY + 1, boardW - 2, boardH - 2);
 
     // Danger overlay
     if (state.dangerLevel > 0.3) {
@@ -232,17 +292,19 @@ export class Canvas2DRenderer implements Renderer {
       ctx.fillRect(boardX, boardY, boardW, boardH);
     }
 
-    // Grid lines — subtle dots at intersections instead of full lines
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    // Grid lines — subtle crosshair dots at intersections
     for (let r = 1; r < ROWS; r++) {
       for (let c = 1; c < COLS; c++) {
         const gx = boardX + c * cellSize;
         const gy = boardY + r * cellSize;
+        ctx.globalAlpha = 0.04;
+        ctx.fillStyle = '#b8a0e0';
         ctx.beginPath();
         ctx.arc(gx, gy, 1, 0, Math.PI * 2);
         ctx.fill();
       }
     }
+    ctx.globalAlpha = 1;
 
     // Landed candies
     const pad = 2;
@@ -1126,6 +1188,111 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fill();
 
     ctx.restore();
+  }
+
+  /** Diagonal syrup streaks drifting across the background */
+  private drawSyrupStreaks(
+    ctx: CanvasRenderingContext2D, cam: Camera, _dt: number,
+  ): void {
+    const t = this.ambientHue;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+      const phase = i * 1.3 + t * 0.08;
+      const x = ((phase * 80) % (cam.logicalW + 200)) - 100;
+      const y0 = -20;
+      const y1 = cam.logicalH + 20;
+      const sway = Math.sin(phase * 0.5) * 30;
+      ctx.globalAlpha = 0.03 + Math.sin(t * 0.3 + i) * 0.01;
+      ctx.strokeStyle = i % 2 === 0 ? '#6633aa' : '#334466';
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.quadraticCurveTo(x + sway, cam.logicalH * 0.5, x - sway * 0.5, y1);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'butt';
+  }
+
+  /** Decorative candy factory elements on side margins */
+  private drawFactoryDecor(
+    ctx: CanvasRenderingContext2D, cam: Camera,
+    boardX: number, boardY: number, boardW: number, boardH: number,
+  ): void {
+    const t = this.ambientHue;
+    const leftX = boardX - 1;
+    const rightX = boardX + boardW + 1;
+    const marginL = leftX;
+    const marginR = cam.logicalW - rightX;
+    if (marginL < 8 && marginR < 8) return; // no space on mobile
+
+    // Pipe segments along board edges
+    const pipeW = Math.min(4, marginL * 0.3, marginR * 0.3);
+    if (pipeW < 1.5) return;
+
+    ctx.lineCap = 'round';
+    ctx.lineWidth = pipeW;
+
+    // Left pipe
+    const pipeAlpha = 0.08 + Math.sin(t * 0.5) * 0.02;
+    ctx.strokeStyle = `rgba(100,60,160,${pipeAlpha})`;
+    ctx.beginPath();
+    ctx.moveTo(leftX - pipeW * 2, boardY + 20);
+    ctx.lineTo(leftX - pipeW * 2, boardY + boardH - 20);
+    ctx.stroke();
+
+    // Right pipe
+    ctx.beginPath();
+    ctx.moveTo(rightX + pipeW * 2, boardY + 30);
+    ctx.lineTo(rightX + pipeW * 2, boardY + boardH - 30);
+    ctx.stroke();
+
+    // Pipe joints / rivets
+    ctx.fillStyle = `rgba(140,100,200,${pipeAlpha * 1.5})`;
+    for (let i = 0; i < 4; i++) {
+      const jy = boardY + 40 + i * (boardH - 80) / 3;
+      ctx.beginPath();
+      ctx.arc(leftX - pipeW * 2, jy, pipeW * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(rightX + pipeW * 2, jy + 15, pipeW * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Drip glow from pipes — flowing syrup
+    const dripY = ((t * 30) % (boardH - 40)) + boardY + 20;
+    const dripGlow = ctx.createRadialGradient(
+      leftX - pipeW * 2, dripY, 0,
+      leftX - pipeW * 2, dripY, pipeW * 4,
+    );
+    dripGlow.addColorStop(0, 'rgba(120,80,200,0.12)');
+    dripGlow.addColorStop(1, 'rgba(120,80,200,0)');
+    ctx.fillStyle = dripGlow;
+    ctx.fillRect(leftX - pipeW * 6, dripY - pipeW * 4, pipeW * 8, pipeW * 8);
+
+    ctx.lineCap = 'butt';
+  }
+
+  /** Faint sugar crystal sparkle texture on board surface */
+  private drawSugarTexture(
+    ctx: CanvasRenderingContext2D,
+    bx: number, by: number, bw: number, bh: number,
+  ): void {
+    // Deterministic sparkle pattern using simple hash
+    ctx.fillStyle = 'rgba(220,200,255,0.04)';
+    for (let i = 0; i < 30; i++) {
+      const hx = ((i * 137 + 59) % 997) / 997;
+      const hy = ((i * 251 + 83) % 997) / 997;
+      const pulse = Math.sin(this.ambientHue * 0.8 + i * 2.1);
+      if (pulse < 0.3) continue; // only some sparkle at a time
+      const sx = bx + hx * bw;
+      const sy = by + hy * bh;
+      ctx.globalAlpha = 0.03 + pulse * 0.02;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   private updateAndDrawParallax(
