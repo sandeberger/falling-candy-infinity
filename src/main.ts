@@ -611,7 +611,7 @@ function loop(now: number): void {
       accumulator -= SIM_DT;
     }
 
-    music.update(frameTime, state.dangerLevel);
+    music.update(frameTime, state.dangerLevel, state.stagePhase === 'pressure', state.chain);
     // Only run danger alarm during active gameplay
     if (state.appState === AppState.PLAYING) {
       audio.updateDangerAlarm(state.dangerLevel);

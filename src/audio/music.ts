@@ -40,9 +40,18 @@ export class MusicEngine {
       });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  update(_dt: number, _dangerLevel: number): void {
-    // Nothing to do — the <audio> element loops on its own
+  update(_dt: number, dangerLevel: number, pressure = false, chain = 0): void {
+    if (!this.audio || !this.running) return;
+
+    // Pressure phase: slightly faster playback (1.0 → 1.08)
+    const targetRate = pressure ? 1.08 : 1.0;
+    this.audio.playbackRate += (targetRate - this.audio.playbackRate) * 0.02;
+
+    // Volume boost at high danger / big combos (base 0.45 → up to 0.65)
+    const dangerBoost = Math.max(0, dangerLevel - 0.3) * 0.2;
+    const chainBoost = Math.min(chain * 0.03, 0.12);
+    const targetVol = Math.min(0.45 + dangerBoost + chainBoost, 0.65);
+    this.audio.volume += (targetVol - this.audio.volume) * 0.03;
   }
 
   pause(): void {
