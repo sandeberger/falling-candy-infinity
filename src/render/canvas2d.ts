@@ -61,6 +61,7 @@ export class Canvas2DRenderer implements Renderer {
   private stageFlash = 0;
   private phaseFlash = 0;
   private phaseFlashColor = '255,150,50';
+  private bloomFlash = 0;
   private leanAngle = 0;       // radians, decays toward 0
   private prevActivePivotCol = -1;
 
@@ -132,6 +133,10 @@ export class Canvas2DRenderer implements Renderer {
     this.stageFlash = 1;
   }
 
+  triggerBloomFlash(intensity: number): void {
+    this.bloomFlash = Math.min(intensity, 1);
+  }
+
   triggerPhaseFlash(phase: string): void {
     this.phaseFlash = 1;
     this.phaseFlashColor = phase === 'pressure' ? '255,120,50' : '100,220,150';
@@ -162,6 +167,10 @@ export class Canvas2DRenderer implements Renderer {
     // Decay phase flash
     if (this.phaseFlash > 0) {
       this.phaseFlash = Math.max(0, this.phaseFlash - frameDt * 0.003);
+    }
+    // Decay bloom flash (fast — ~120ms)
+    if (this.bloomFlash > 0) {
+      this.bloomFlash = Math.max(0, this.bloomFlash - frameDt * 0.008);
     }
 
     // Screen shake offset
@@ -216,6 +225,13 @@ export class Canvas2DRenderer implements Renderer {
       ctx.fillRect(boardX, boardY, boardW, boardH);
     }
 
+    // Bloom flash overlay (cascade feedback)
+    if (this.bloomFlash > 0) {
+      const a = this.bloomFlash * 0.2;
+      ctx.fillStyle = `rgba(255,255,240,${a})`;
+      ctx.fillRect(boardX, boardY, boardW, boardH);
+    }
+
     // Grid lines — subtle dots at intersections instead of full lines
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     for (let r = 1; r < ROWS; r++) {
@@ -231,6 +247,10 @@ export class Canvas2DRenderer implements Renderer {
     // Landed candies
     const pad = 2;
     const innerSize = cellSize - pad * 2;
+
+    // Sticky goo bridges — drawn before candies so they appear behind
+    this.drawStickyBridges(ctx, state, boardX, boardY, cellSize, pad, innerSize);
+
     for (let r = 0; r < ROWS + SPAWN_ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const candy = state.board[r * COLS + c];
@@ -654,21 +674,90 @@ export class Canvas2DRenderer implements Renderer {
 
   private drawStickyCandy(
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
-    base: string, light: string, dark: string, bonds: number, color?: CandyColor,
+    base: string, light: string, dark: string, _bonds: number, color?: CandyColor,
   ): void {
     // Standard candy base (with unique shape)
     this.drawStandardCandy(ctx, x, y, size, r, base, light, dark, color);
 
-    // Sticky bond indicators — thick colored connectors
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(255,220,100,0.7)';
+    // Glossy caramel sheen overlay
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const sheenGrad = ctx.createRadialGradient(cx - size * 0.15, cy - size * 0.15, 0, cx, cy, size * 0.5);
+    sheenGrad.addColorStop(0, 'rgba(255,230,140,0.25)');
+    sheenGrad.addColorStop(1, 'rgba(200,150,50,0.08)');
+    ctx.fillStyle = sheenGrad;
+    this.roundRectFill(ctx, x, y, size, size, r);
+  }
+
+  private drawStickyBridges(
+    ctx: CanvasRenderingContext2D, state: GameState,
+    boardX: number, boardY: number, cellSize: number, pad: number, innerSize: number,
+  ): void {
     ctx.lineCap = 'round';
-    const m = size * 0.25;
-    if (bonds & 1) { ctx.beginPath(); ctx.moveTo(x + m, y - 1); ctx.lineTo(x + size - m, y - 1); ctx.stroke(); }
-    if (bonds & 2) { ctx.beginPath(); ctx.moveTo(x + size + 1, y + m); ctx.lineTo(x + size + 1, y + size - m); ctx.stroke(); }
-    if (bonds & 4) { ctx.beginPath(); ctx.moveTo(x + m, y + size + 1); ctx.lineTo(x + size - m, y + size + 1); ctx.stroke(); }
-    if (bonds & 8) { ctx.beginPath(); ctx.moveTo(x - 1, y + m); ctx.lineTo(x - 1, y + size - m); ctx.stroke(); }
+    for (let r = 0; r < ROWS + SPAWN_ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const candy = state.board[r * COLS + c];
+        if (!candy || candy.type !== CandyType.STICKY) continue;
+        const bonds = candy.stickyBonds ?? 0;
+        if (bonds === 0) continue;
+
+        const cx = boardX + candy.visualCol * cellSize + pad + innerSize / 2;
+        const cy = boardY + (candy.visualRow - SPAWN_ROWS) * cellSize + pad + innerSize / 2;
+        const halfCell = cellSize / 2;
+
+        // Only draw RIGHT and DOWN bonds to avoid double-drawing
+        // Right bond (bit 2)
+        if (bonds & 2) {
+          const neighbor = c < COLS - 1 ? state.board[r * COLS + c + 1] : null;
+          if (neighbor) {
+            const nx = boardX + neighbor.visualCol * cellSize + pad + innerSize / 2;
+            const ny = boardY + (neighbor.visualRow - SPAWN_ROWS) * cellSize + pad + innerSize / 2;
+            this.drawGooBridge(ctx, cx, cy, nx, ny, halfCell);
+          }
+        }
+        // Down bond (bit 4)
+        if (bonds & 4) {
+          const neighbor = r < ROWS + SPAWN_ROWS - 1 ? state.board[(r + 1) * COLS + c] : null;
+          if (neighbor) {
+            const nx = boardX + neighbor.visualCol * cellSize + pad + innerSize / 2;
+            const ny = boardY + (neighbor.visualRow - SPAWN_ROWS) * cellSize + pad + innerSize / 2;
+            this.drawGooBridge(ctx, cx, cy, nx, ny, halfCell);
+          }
+        }
+      }
+    }
     ctx.lineCap = 'butt';
+  }
+
+  private drawGooBridge(
+    ctx: CanvasRenderingContext2D,
+    x1: number, y1: number, x2: number, y2: number, halfCell: number,
+  ): void {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    // Direction-perpendicular sag for the curve
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const sag = halfCell * 0.15;
+    // Perpendicular offset for a slight droop
+    const sagX = -dy / (Math.abs(dx) + Math.abs(dy) + 0.01) * sag;
+    const sagY = dx / (Math.abs(dx) + Math.abs(dy) + 0.01) * sag + sag * 0.5;
+
+    // Thick caramel strand
+    ctx.lineWidth = halfCell * 0.22;
+    ctx.strokeStyle = 'rgba(220,170,50,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(mx + sagX, my + sagY, x2, y2);
+    ctx.stroke();
+
+    // Thin highlight strand on top
+    ctx.lineWidth = halfCell * 0.08;
+    ctx.strokeStyle = 'rgba(255,240,180,0.4)';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(mx + sagX - 1, my + sagY - 1, x2, y2);
+    ctx.stroke();
   }
 
   private drawBombCandy(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, timer: number): void {
@@ -734,9 +823,38 @@ export class Canvas2DRenderer implements Renderer {
   private drawPrismCandy(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
     const cx = x + size / 2;
     const cy = y + size / 2;
-    const hue = (this.dangerPulse * 60) % 360;
+    const t = this.dangerPulse;
+    // Slow chromatic shimmer — smooth sinusoidal hue drift
+    const hue = (Math.sin(t * 0.4) * 60 + Math.sin(t * 0.17) * 40 + t * 15) % 360;
+    const hue2 = (hue + 90) % 360;
+    const hue3 = (hue + 200) % 360;
+
+    // Prismatic halo — rainbow ring behind the diamond
+    const haloR = size * 0.52;
+    const haloPulse = 0.15 + Math.sin(t * 0.7) * 0.05;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + t * 0.3;
+      const segHue = (hue + i * 60) % 360;
+      const hx = cx + Math.cos(angle) * haloR;
+      const hy = cy + Math.sin(angle) * haloR;
+      const dotSize = size * 0.12;
+      ctx.globalAlpha = haloPulse;
+      ctx.fillStyle = `hsl(${segHue}, 85%, 70%)`;
+      ctx.beginPath();
+      ctx.arc(hx, hy, dotSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Soft halo glow
+    const haloGrad = ctx.createRadialGradient(cx, cy, haloR * 0.5, cx, cy, haloR * 1.1);
+    haloGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    haloGrad.addColorStop(0.6, `hsla(${hue}, 70%, 80%, 0.08)`);
+    haloGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(x - 4, y - 4, size + 8, size + 8);
 
     // Shadow
+    ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.save();
     ctx.translate(cx + 2, cy + 2);
@@ -745,21 +863,32 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillRect(-ds / 2, -ds / 2, ds, ds);
     ctx.restore();
 
-    // Diamond body with rainbow gradient
+    // Diamond body — tri-color shimmer gradient
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(Math.PI / 4);
     const dSize = size * 0.56;
     const prismGrad = ctx.createLinearGradient(-dSize / 2, -dSize / 2, dSize / 2, dSize / 2);
     prismGrad.addColorStop(0, `hsl(${hue}, 80%, 75%)`);
-    prismGrad.addColorStop(0.5, '#ffffff');
-    prismGrad.addColorStop(1, `hsl(${(hue + 120) % 360}, 80%, 75%)`);
+    prismGrad.addColorStop(0.35, `hsl(${hue2}, 70%, 85%)`);
+    prismGrad.addColorStop(0.65, '#ffffff');
+    prismGrad.addColorStop(1, `hsl(${hue3}, 80%, 75%)`);
     ctx.fillStyle = prismGrad;
     ctx.fillRect(-dSize / 2, -dSize / 2, dSize, dSize);
     ctx.restore();
 
-    // Outer glow
-    ctx.globalAlpha = 0.2;
+    // Specular highlight — drifting bright spot
+    const specAngle = t * 0.5;
+    const specX = cx + Math.cos(specAngle) * size * 0.12;
+    const specY = cy + Math.sin(specAngle) * size * 0.1 - size * 0.08;
+    const specGrad = ctx.createRadialGradient(specX, specY, 0, specX, specY, size * 0.22);
+    specGrad.addColorStop(0, 'rgba(255,255,255,0.6)');
+    specGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = specGrad;
+    ctx.fillRect(x, y, size, size);
+
+    // Outer chromatic glow
+    ctx.globalAlpha = 0.15 + Math.sin(t * 0.6) * 0.05;
     ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
     this.roundRectFill(ctx, x + 1, y + 1, size - 2, size - 2, size * 0.15);
     ctx.globalAlpha = 1;
@@ -1298,6 +1427,16 @@ export class Canvas2DRenderer implements Renderer {
 
   getCamera(): Camera {
     return this.camera;
+  }
+
+  getAbilityMeterCenter(): { x: number; y: number } {
+    const { cellSize, boardX } = this.camera;
+    const boardRight = boardX + COLS * cellSize;
+    const meterW = 60;
+    const meterH = 10;
+    const meterX = boardRight - meterW - 80;
+    const meterY = HUD_HEIGHT / 2 + 6;
+    return { x: meterX + meterW / 2, y: meterY + meterH / 2 };
   }
 
   cellToScreen(row: number, col: number): { x: number; y: number } {

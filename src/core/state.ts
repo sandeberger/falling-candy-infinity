@@ -72,7 +72,7 @@ export interface Formation {
 
 export type GameEventType =
   | 'pop' | 'drop' | 'chain' | 'move' | 'rotate'
-  | 'game_over' | 'stage_up'
+  | 'game_over' | 'stage_up' | 'board_clear'
   | 'bomb_explode' | 'jelly_clear' | 'unlock' | 'crack'
   | 'ability_activate' | 'ability_ready' | 'danger'
   | 'milestone' | 'phase_change';

@@ -326,6 +326,12 @@ function handleMatching(state: GameState): void {
       state.hitStopScale = Math.max(0.15, 0.4 - state.chain * 0.05); // slower for bigger chains
     }
   } else {
+    // Check if board is completely empty — reward with bonus
+    if (state.board.every(c => c === null)) {
+      const bonus = 500 * state.stage;
+      state.score += bonus;
+      emit(state, { type: 'board_clear', count: bonus });
+    }
     // Grant post-chain relief: bigger chain = longer, stronger relief
     if (state.chain >= 3) {
       state.reliefTimer = Math.min(state.chain * 400, 2000); // up to 2s

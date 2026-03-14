@@ -11,8 +11,21 @@ export interface FX {
   value?: number;
 }
 
+interface Shard {
+  x: number; y: number;
+  vx: number; vy: number;
+  rotation: number;
+  rotationSpeed: number;
+  age: number;
+  duration: number;
+  color: string;
+  size: number;
+  sides: number; // 3 = triangle, 4 = trapezoid
+}
+
 export class FXManager {
   private effects: FX[] = [];
+  private shards: Shard[] = [];
 
   addPop(x: number, y: number, color: string): void {
     this.effects.push({ type: 'pop', x, y, age: 0, duration: 300, color });
@@ -34,6 +47,25 @@ export class FXManager {
     this.effects.push({ type: 'sparkle', x, y, age: 0, duration: 400, color });
   }
 
+  addShards(x: number, y: number, color: string, count = 4): void {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+      const speed = 0.08 + Math.random() * 0.08;
+      this.shards.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.06,
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.012,
+        age: 0,
+        duration: 450 + Math.random() * 100,
+        color,
+        size: 3.5 + Math.random() * 2.5,
+        sides: Math.random() < 0.5 ? 3 : 4,
+      });
+    }
+  }
+
   update(dt: number): void {
     for (let i = this.effects.length - 1; i >= 0; i--) {
       this.effects[i].age += dt;
@@ -41,9 +73,49 @@ export class FXManager {
         this.effects.splice(i, 1);
       }
     }
+    for (let i = this.shards.length - 1; i >= 0; i--) {
+      const s = this.shards[i];
+      s.age += dt;
+      if (s.age >= s.duration) {
+        this.shards.splice(i, 1);
+        continue;
+      }
+      s.vy += 0.00025 * dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.rotation += s.rotationSpeed * dt;
+    }
   }
 
   render(ctx: CanvasRenderingContext2D): void {
+    // Draw shards behind pop effects
+    for (const s of this.shards) {
+      const t = s.age / s.duration;
+      const alpha = 1 - t * t;
+      const scale = 1 - t * 0.6;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = s.color;
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.rotation);
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      if (s.sides === 3) {
+        ctx.moveTo(0, -s.size);
+        ctx.lineTo(s.size * 0.87, s.size * 0.5);
+        ctx.lineTo(-s.size * 0.87, s.size * 0.5);
+      } else {
+        ctx.moveTo(-s.size * 0.6, -s.size * 0.5);
+        ctx.lineTo(s.size * 0.6, -s.size * 0.5);
+        ctx.lineTo(s.size * 0.8, s.size * 0.5);
+        ctx.lineTo(-s.size * 0.8, s.size * 0.5);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
     for (const fx of this.effects) {
       const t = fx.age / fx.duration;
       switch (fx.type) {
@@ -182,9 +254,10 @@ export class FXManager {
 
   clear(): void {
     this.effects.length = 0;
+    this.shards.length = 0;
   }
 
   get count(): number {
-    return this.effects.length;
+    return this.effects.length + this.shards.length;
   }
 }

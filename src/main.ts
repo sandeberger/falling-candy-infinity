@@ -266,7 +266,9 @@ function processEvents(): void {
             totalPoints += group.length * 10 * (event.chain ?? 1);
             for (const cell of group) {
               const pos = renderer.cellToScreen(cell.row, cell.col);
-              fx.addPop(pos.x, pos.y, COLOR_HEX[cell.color] ?? '#ffffff');
+              const cellColor = COLOR_HEX[cell.color] ?? '#ffffff';
+              fx.addPop(pos.x, pos.y, cellColor);
+              fx.addShards(pos.x, pos.y, cellColor);
               if (group.length >= 4) fx.addSparkle(pos.x, pos.y, '#ffffff');
             }
           }
@@ -290,15 +292,20 @@ function processEvents(): void {
         if (event.row !== undefined && event.col !== undefined) {
           const pos = renderer.cellToScreen(event.row, event.col);
           fx.addSquash(pos.x, pos.y, 'rgba(255,255,255,0.6)');
-          // Precision drop bonus popup
+          // Precision drop bonus popup + reward particles
           if (event.count && event.count > 0) {
             fx.addScorePop(pos.x, pos.y - 15, event.count);
+            fx.addSparkle(pos.x, pos.y, '#ffdd44');
+            if (event.count >= 6) {
+              fx.addShards(pos.x, pos.y, '#ffaa22', 3);
+            }
           }
         }
         break;
       case 'chain':
         audio.chain(event.chain ?? 2);
         hapticChain(event.chain ?? 2);
+        renderer.triggerBloomFlash(Math.min(0.3 + (event.chain ?? 2) * 0.15, 1));
         break;
       case 'move':
         audio.move();
@@ -338,12 +345,31 @@ function processEvents(): void {
           const pos = renderer.cellToScreen(event.row, event.col);
           fx.addPop(pos.x, pos.y, '#ff6600');
           fx.addPop(pos.x, pos.y, '#ffaa00');
+          fx.addShards(pos.x, pos.y, '#ff6600', 8);
           fx.addComboText(pos.x, pos.y - 20, 'BOOM!');
           for (let i = 0; i < 4; i++) {
             fx.addSparkle(
               pos.x + (Math.random() - 0.5) * 40,
               pos.y + (Math.random() - 0.5) * 40,
               '#ff8800',
+            );
+          }
+        }
+        break;
+      case 'board_clear':
+        audio.boardClear();
+        {
+          const cam = renderer.getCamera();
+          const bonus = event.count ?? 0;
+          fx.addComboText(cam.logicalW / 2, cam.logicalH / 2 - 40, 'ALL CLEAR!');
+          if (bonus > 0) {
+            fx.addScorePop(cam.logicalW / 2, cam.logicalH / 2, bonus);
+          }
+          for (let i = 0; i < 8; i++) {
+            fx.addShards(
+              cam.logicalW / 2 + (Math.random() - 0.5) * 100,
+              cam.logicalH / 2 + (Math.random() - 0.5) * 60,
+              '#ffdd44', 6,
             );
           }
         }
@@ -374,6 +400,17 @@ function processEvents(): void {
         break;
       case 'ability_ready':
         audio.abilityReady();
+        {
+          const mc = renderer.getAbilityMeterCenter();
+          for (let i = 0; i < 6; i++) {
+            fx.addSparkle(
+              mc.x + (Math.random() - 0.5) * 50,
+              mc.y + (Math.random() - 0.5) * 20,
+              '#44ffaa',
+            );
+          }
+          fx.addShards(mc.x, mc.y, '#22cc88', 6);
+        }
         break;
       case 'danger':
         audio.danger();
@@ -439,7 +476,9 @@ function processDemoEvents(): void {
           for (const group of event.groups) {
             for (const cell of group) {
               const pos = renderer.cellToScreen(cell.row, cell.col);
-              demoFx.addPop(pos.x, pos.y, COLOR_HEX[cell.color] ?? '#ffffff');
+              const demoColor = COLOR_HEX[cell.color] ?? '#ffffff';
+              demoFx.addPop(pos.x, pos.y, demoColor);
+              demoFx.addShards(pos.x, pos.y, demoColor);
             }
           }
         }

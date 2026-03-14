@@ -114,12 +114,15 @@ export class AudioManager {
 
   stageUp(): void {
     this.playSample('jingle', 0.5);
-    this.playSample('robot-stageclear', 0.55);
     setTimeout(() => this.playSample('robot-levelup', 0.6), 500);
     // Synth chime
     this.playTone(600, 0.1, 0.08, 'sine');
     setTimeout(() => this.playTone(800, 0.1, 0.08, 'sine'), 80);
     setTimeout(() => this.playTone(1000, 0.15, 0.06, 'sine'), 160);
+  }
+
+  boardClear(): void {
+    this.playSample('robot-stageclear', 0.6);
   }
 
   bombExplode(): void {
