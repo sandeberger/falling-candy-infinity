@@ -676,17 +676,54 @@ export class Canvas2DRenderer implements Renderer {
     ctx: CanvasRenderingContext2D, x: number, y: number, size: number, r: number,
     base: string, light: string, dark: string, _bonds: number, color?: CandyColor,
   ): void {
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const t = this.dangerPulse;
+
     // Standard candy base (with unique shape)
     this.drawStandardCandy(ctx, x, y, size, r, base, light, dark, color);
 
     // Glossy caramel sheen overlay
-    const cx = x + size / 2;
-    const cy = y + size / 2;
     const sheenGrad = ctx.createRadialGradient(cx - size * 0.15, cy - size * 0.15, 0, cx, cy, size * 0.5);
-    sheenGrad.addColorStop(0, 'rgba(255,230,140,0.25)');
-    sheenGrad.addColorStop(1, 'rgba(200,150,50,0.08)');
+    sheenGrad.addColorStop(0, 'rgba(255,230,140,0.3)');
+    sheenGrad.addColorStop(1, 'rgba(200,150,50,0.1)');
     ctx.fillStyle = sheenGrad;
     this.roundRectFill(ctx, x, y, size, size, r);
+
+    // Sticky outline — thick, warm, slightly transparent
+    ctx.strokeStyle = 'rgba(210,160,60,0.45)';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    this.roundRectStroke(ctx, x - 1, y - 1, size + 2, size + 2, r + 1);
+
+    // Syrup drip blobs — small circles at edges that pulse gently
+    const dripPositions = [
+      { dx: size * 0.25, dy: size + 1 },   // bottom-left
+      { dx: size * 0.7, dy: size + 2 },    // bottom-right
+      { dx: -1, dy: size * 0.6 },          // left
+      { dx: size + 1, dy: size * 0.4 },    // right
+    ];
+    ctx.fillStyle = 'rgba(220,170,60,0.5)';
+    for (let i = 0; i < dripPositions.length; i++) {
+      const d = dripPositions[i];
+      const pulse = 1 + Math.sin(t * 0.8 + i * 1.5) * 0.25;
+      const blobR = size * 0.06 * pulse;
+      ctx.beginPath();
+      ctx.arc(x + d.dx, y + d.dy, blobR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Stretch marks — tiny curved lines on the candy surface
+    ctx.strokeStyle = 'rgba(255,220,120,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.2, y + size * 0.3);
+    ctx.quadraticCurveTo(x + size * 0.35, y + size * 0.25, x + size * 0.45, y + size * 0.32);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.55, y + size * 0.65);
+    ctx.quadraticCurveTo(x + size * 0.7, y + size * 0.6, x + size * 0.8, y + size * 0.68);
+    ctx.stroke();
   }
 
   private drawStickyBridges(
