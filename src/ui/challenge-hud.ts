@@ -1,5 +1,6 @@
 import { ChallengePhase, type GameState } from '../core/state.js';
 import { LEVELS } from '../challenge/level-data.js';
+import type { SaveData } from '../save/persistence.js';
 
 const F_UI = 'Fredoka, sans-serif';
 const F_ACTION = 'Bangers, cursive';
@@ -130,9 +131,12 @@ export function drawVictoryScreen(
   h: number,
   state: GameState,
   time: number,
+  save?: SaveData,
 ): void {
   const ch = state.challenge;
   if (!ch) return;
+
+  const isLastLevel = ch.levelIndex >= LEVELS.length - 1;
 
   ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.fillRect(0, 0, w, h);
@@ -144,37 +148,115 @@ export function drawVictoryScreen(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // Title
-  ctx.fillStyle = '#44ff88';
-  ctx.font = `700 ${s * 2}px ${F_ACTION}`;
-  ctx.fillText('LEVEL CLEAR!', cx, cy - s * 4.5);
+  if (isLastLevel) {
+    // --- ALL CHALLENGES COMPLETE celebration ---
+    // Animated rainbow title
+    const hue = (time * 0.1) % 360;
+    ctx.fillStyle = `hsl(${hue}, 90%, 65%)`;
+    ctx.font = `700 ${s * 1.6}px ${F_ACTION}`;
+    ctx.fillText('ALL CHALLENGES', cx, cy - s * 5.5);
+    ctx.fillText('COMPLETE!', cx, cy - s * 3.5);
 
-  // Stars
-  const starSize = s * 1.8;
-  for (let i = 0; i < 3; i++) {
-    const sx = cx + (i - 1) * (starSize * 1.3);
-    ctx.fillStyle = i < ch.stars ? '#ffcc00' : '#333333';
-    ctx.font = `${starSize}px ${F_UI}`;
-    ctx.fillText('\u2605', sx, cy - s * 2);
-  }
+    // Current level stars
+    const starSize = s * 1.8;
+    for (let i = 0; i < 3; i++) {
+      const sx = cx + (i - 1) * (starSize * 1.3);
+      ctx.fillStyle = i < ch.stars ? '#ffcc00' : '#333333';
+      ctx.font = `${starSize}px ${F_UI}`;
+      ctx.fillText('\u2605', sx, cy - s * 1.5);
+    }
 
-  // Time
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `600 ${s * 1.1}px ${F_UI}`;
-  ctx.fillText(formatTime(ch.elapsedMs), cx, cy - s * 0.3);
+    // Time for this level
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `600 ${s * 0.9}px ${F_UI}`;
+    ctx.fillText(formatTime(ch.elapsedMs), cx, cy + s * 0.2);
 
-  ctx.fillStyle = '#888888';
-  ctx.font = `400 ${s * 0.6}px ${F_UI}`;
-  ctx.fillText(`Score: ${state.score}`, cx, cy + s * 1);
+    // Total star count
+    let totalStars = ch.stars; // include current level's stars
+    if (save?.challengeStars) {
+      for (let i = 0; i < save.challengeStars.length; i++) {
+        if (i === ch.levelIndex) {
+          totalStars = Math.max(totalStars, save.challengeStars[i]);
+        } else {
+          totalStars += save.challengeStars[i];
+        }
+      }
+    }
+    const maxStars = LEVELS.length * 3;
 
-  // Buttons
-  const btnW = Math.min(200, w * 0.5);
-  const btnH = s * 2;
-  const gap = s * 0.8;
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = `700 ${s * 1.1}px ${F_ACTION}`;
+    ctx.fillText(`${totalStars} / ${maxStars} \u2605`, cx, cy + s * 1.8);
 
-  // Next Level button (only if not last level)
-  const hasNext = ch.levelIndex < LEVELS.length - 1;
-  if (hasNext) {
+    ctx.fillStyle = '#888888';
+    ctx.font = `400 ${s * 0.55}px ${F_UI}`;
+    if (totalStars >= maxStars) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillText('PERFECT! Every star collected!', cx, cy + s * 3);
+    } else {
+      ctx.fillText('Replay levels to earn more stars!', cx, cy + s * 3);
+    }
+
+    // Floating sparkle particles
+    for (let i = 0; i < 10; i++) {
+      const seed = i * 73.7;
+      const px = cx + Math.sin(time * 0.002 + seed) * (w * 0.35);
+      const py = cy + Math.cos(time * 0.0015 + seed * 1.3) * (h * 0.3);
+      const sparkAlpha = 0.3 + Math.sin(time * 0.005 + seed) * 0.2;
+      const sparkSize = 2 + Math.sin(time * 0.003 + seed * 2) * 1.5;
+      ctx.globalAlpha = sparkAlpha;
+      ctx.fillStyle = `hsl(${(hue + i * 36) % 360}, 80%, 70%)`;
+      ctx.beginPath();
+      ctx.arc(px, py, sparkSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Level Select button
+    const btnW = Math.min(200, w * 0.5);
+    const btnH = s * 2;
+    nextLevelBtnRect = { x: 0, y: 0, w: 0, h: 0 };
+    const selY = cy + s * 4.2;
+    const selGrad = ctx.createLinearGradient(cx - btnW / 2, selY, cx - btnW / 2, selY + btnH);
+    selGrad.addColorStop(0, '#ffcc00');
+    selGrad.addColorStop(1, '#cc9900');
+    ctx.fillStyle = selGrad;
+    roundRectFill(ctx, cx - btnW / 2, selY, btnW, btnH, 10);
+    levelSelectBtnRect = { x: cx - btnW / 2, y: selY, w: btnW, h: btnH };
+
+    ctx.fillStyle = '#000000';
+    ctx.font = `700 ${s * 0.75}px ${F_ACTION}`;
+    ctx.fillText('LEVEL SELECT', cx, selY + btnH / 2);
+  } else {
+    // --- Normal level clear ---
+    // Title
+    ctx.fillStyle = '#44ff88';
+    ctx.font = `700 ${s * 2}px ${F_ACTION}`;
+    ctx.fillText('LEVEL CLEAR!', cx, cy - s * 4.5);
+
+    // Stars
+    const starSize = s * 1.8;
+    for (let i = 0; i < 3; i++) {
+      const sx = cx + (i - 1) * (starSize * 1.3);
+      ctx.fillStyle = i < ch.stars ? '#ffcc00' : '#333333';
+      ctx.font = `${starSize}px ${F_UI}`;
+      ctx.fillText('\u2605', sx, cy - s * 2);
+    }
+
+    // Time
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `600 ${s * 1.1}px ${F_UI}`;
+    ctx.fillText(formatTime(ch.elapsedMs), cx, cy - s * 0.3);
+
+    ctx.fillStyle = '#888888';
+    ctx.font = `400 ${s * 0.6}px ${F_UI}`;
+    ctx.fillText(`Score: ${state.score}`, cx, cy + s * 1);
+
+    // Buttons
+    const btnW = Math.min(200, w * 0.5);
+    const btnH = s * 2;
+    const gap = s * 0.8;
+
     const nextY = cy + s * 2.5;
     const grad = ctx.createLinearGradient(cx - btnW / 2, nextY, cx - btnW / 2, nextY + btnH);
     grad.addColorStop(0, '#44ff88');
@@ -189,17 +271,6 @@ export function drawVictoryScreen(
 
     // Level Select button
     const selY = nextY + btnH + gap;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    roundRectFill(ctx, cx - btnW / 2, selY, btnW, btnH, 10);
-    levelSelectBtnRect = { x: cx - btnW / 2, y: selY, w: btnW, h: btnH };
-
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = `600 ${s * 0.7}px ${F_UI}`;
-    ctx.fillText('LEVEL SELECT', cx, selY + btnH / 2);
-  } else {
-    // Last level: only show Level Select
-    nextLevelBtnRect = { x: 0, y: 0, w: 0, h: 0 };
-    const selY = cy + s * 2.5;
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     roundRectFill(ctx, cx - btnW / 2, selY, btnW, btnH, 10);
     levelSelectBtnRect = { x: cx - btnW / 2, y: selY, w: btnW, h: btnH };

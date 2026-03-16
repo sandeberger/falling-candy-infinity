@@ -805,7 +805,7 @@ function loop(now: number): void {
       if (ch.phase === ChallengePhase.COUNTDOWN) {
         drawCountdown(ctx, cam.logicalW, cam.logicalH, ch.countdownTimer);
       } else if (ch.phase === ChallengePhase.VICTORY) {
-        drawVictoryScreen(ctx, cam.logicalW, cam.logicalH, state, menuTime);
+        drawVictoryScreen(ctx, cam.logicalW, cam.logicalH, state, menuTime, save);
       } else if (ch.phase === ChallengePhase.FAILED) {
         drawFailedScreen(ctx, cam.logicalW, cam.logicalH, state);
       }
