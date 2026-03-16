@@ -1,9 +1,10 @@
 import { COLS, ROWS, SPAWN_ROWS, HUD_HEIGHT } from '../config.js';
-import { CandyColor, CandyType, AppState, type GameState, type Candy } from '../core/state.js';
+import { CandyColor, CandyType, AppState, ChallengePhase, type GameState, type Candy } from '../core/state.js';
 import { getAbsoluteCells, getGhostPosition } from '../core/formation.js';
 import { calculateCamera, type Camera } from './camera.js';
 import type { Renderer } from './renderer.js';
 import type { FXManager } from '../fx/animation.js';
+import { drawChallengeHUD } from '../ui/challenge-hud.js';
 
 const COLOR_MAP: Record<CandyColor, string> = {
   [CandyColor.RED]: '#ff4444',
@@ -321,7 +322,32 @@ export class Canvas2DRenderer implements Renderer {
         if (screenRow < -1 || screenRow > ROWS) continue;
         const x = boardX + candy.visualCol * cellSize + pad;
         const y = boardY + screenRow * cellSize + pad;
+
+        // Target candy glow in challenge mode — outer glow BEHIND candy
+        const isTarget = state.challenge?.targetCandyIds.has(candy.id);
+        if (isTarget) {
+          const glowPulse = 0.5 + Math.sin(this.dangerPulse * 3 + candy.id * 0.7) * 0.2;
+          // Large soft outer glow
+          const glow = ctx.createRadialGradient(
+            x + innerSize / 2, y + innerSize / 2, innerSize * 0.3,
+            x + innerSize / 2, y + innerSize / 2, innerSize * 0.85,
+          );
+          glow.addColorStop(0, `rgba(255,220,50,${glowPulse * 0.6})`);
+          glow.addColorStop(1, 'rgba(255,220,50,0)');
+          ctx.fillStyle = glow;
+          ctx.fillRect(x - innerSize * 0.3, y - innerSize * 0.3, innerSize * 1.6, innerSize * 1.6);
+        }
+
         this.drawCandy(ctx, candy, x, y, innerSize);
+
+        // Target candy border OVER candy — bright pulsing outline
+        if (isTarget) {
+          const borderPulse = 0.7 + Math.sin(this.dangerPulse * 4 + candy.id * 0.7) * 0.3;
+          ctx.strokeStyle = `rgba(255,220,50,${borderPulse})`;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([]);
+          this.roundRectStroke(ctx, x + 1, y + 1, innerSize - 2, innerSize - 2, innerSize * 0.18);
+        }
       }
     }
 
@@ -399,7 +425,14 @@ export class Canvas2DRenderer implements Renderer {
 
     if (!demoMode) {
       // HUD (outside shake)
-      this.drawHUD(ctx, state, cam);
+      if (state.challenge) {
+        const boardRight = cam.boardX + COLS * cam.cellSize;
+        drawChallengeHUD(ctx, state, cam.boardX, boardRight, HUD_HEIGHT);
+        // Still draw pause button in challenge mode
+        this.drawChallengePauseButton(ctx, cam);
+      } else {
+        this.drawHUD(ctx, state, cam);
+      }
       // Game over overlay is drawn by main.ts (drawGameOverStats)
     }
   }
@@ -1540,6 +1573,23 @@ export class Canvas2DRenderer implements Renderer {
     }
 
     ctx.textAlign = 'left';
+  }
+
+  private drawChallengePauseButton(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    const { cellSize, boardX } = cam;
+    const pauseS = Math.max(20, cellSize * 0.5);
+    const pauseX = boardX + COLS * cellSize - pauseS - 10;
+    const pauseY = HUD_HEIGHT / 2 - pauseS / 2 - 8;
+    this.pauseBtnRect = { x: pauseX - 6, y: pauseY - 6, w: pauseS + 12, h: pauseS + 12 };
+
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    this.roundRectFill(ctx, pauseX - 6, pauseY - 6, pauseS + 12, pauseS + 12, 6);
+    ctx.fillStyle = '#aaaaaa';
+    const barW = pauseS * 0.22;
+    const barH = pauseS * 0.7;
+    const barY = pauseY + (pauseS - barH) / 2;
+    this.roundRectFill(ctx, pauseX + pauseS * 0.22, barY, barW, barH, 2);
+    this.roundRectFill(ctx, pauseX + pauseS * 0.56, barY, barW, barH, 2);
   }
 
   // Ability button hit-test rect (in logical pixels)

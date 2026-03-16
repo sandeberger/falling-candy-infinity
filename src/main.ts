@@ -1,5 +1,5 @@
 import { SIM_DT } from './config.js';
-import { AppState, InputAction, createInitialGameState, type GameState } from './core/state.js';
+import { AppState, ChallengePhase, InputAction, createInitialGameState, type GameState } from './core/state.js';
 import { simulateTick } from './core/simulation.js';
 import { InputBuffer } from './input/buffer.js';
 import { GestureDetector } from './input/gesture.js';
@@ -8,12 +8,18 @@ import { Canvas2DRenderer } from './render/canvas2d.js';
 import { AudioManager } from './audio/audio-manager.js';
 import { MusicEngine } from './audio/music.js';
 import { FXManager } from './fx/animation.js';
-import { loadSave, writeSave, updateHighScores, type SaveData } from './save/persistence.js';
+import { loadSave, writeSave, updateHighScores, updateChallengeLevel, type SaveData } from './save/persistence.js';
 import { drawSplash, drawMenu, drawIntro, drawOnboarding, drawInstallBanner, hitTestInstallBanner, loadLogo } from './ui/menu.js';
 import { drawSettings, hitTestSettings } from './ui/settings.js';
 import { hapticDrop, hapticMatch, hapticChain, hapticBomb, hapticAbility, hapticGameOver, setHapticsEnabled } from './input/haptics.js';
 import { registerSW, setupInstallPrompt, canInstall, triggerInstall } from './pwa/install-prompt.js';
 import { demoBotTick, resetDemoAI } from './ai/demo-player.js';
+import { drawModeSelect, hitTestModeSelect } from './ui/mode-select.js';
+import { drawLevelSelect, hitTestLevelSelect } from './ui/level-select.js';
+import { drawChallengeHUD, drawCountdown, drawVictoryScreen, drawFailedScreen, hitTestChallengeOverlay } from './ui/challenge-hud.js';
+import { challengeTick } from './challenge/challenge-sim.js';
+import { createChallengeGameState } from './challenge/level-loader.js';
+import { LEVELS } from './challenge/level-data.js';
 
 // --- PWA ---
 registerSW();
@@ -101,7 +107,7 @@ window.addEventListener('keydown', (e) => {
     menuTime = 0;
     return;
   }
-  if (state.appState === AppState.MENU) {
+  if (state.appState === AppState.MENU || state.appState === AppState.MODE_SELECT || state.appState === AppState.LEVEL_SELECT) {
     if (e.key === 's' || e.key === 'S') {
       settingsOpen = !settingsOpen;
     }
@@ -109,7 +115,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && settingsOpen) {
     settingsOpen = false;
   }
-  // Pause/unpause during gameplay
+  // Pause/unpause during gameplay + navigation back
   if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && !settingsOpen) {
     if (state.appState === AppState.PLAYING) {
       state.appState = AppState.PAUSED;
@@ -118,6 +124,13 @@ window.addEventListener('keydown', (e) => {
     } else if (state.appState === AppState.PAUSED) {
       state.appState = AppState.PLAYING;
       music.resume();
+    } else if (e.key === 'Escape') {
+      if (state.appState === AppState.MODE_SELECT) {
+        state.appState = AppState.MENU;
+        menuTime = 0;
+      } else if (state.appState === AppState.LEVEL_SELECT) {
+        state.appState = AppState.MODE_SELECT;
+      }
     }
   }
 });
@@ -185,17 +198,72 @@ canvas.addEventListener('pointerdown', (e) => {
       settingsOpen = true;
       return;
     }
-    startGame();
+    state.appState = AppState.MODE_SELECT;
+    return;
+  }
+  if (state.appState === AppState.MODE_SELECT) {
+    const hit = hitTestModeSelect(px, py);
+    if (hit === 'endless') {
+      startGame();
+      return;
+    }
+    if (hit === 'challenge') {
+      state.appState = AppState.LEVEL_SELECT;
+      return;
+    }
+    if (hit === 'back') {
+      state.appState = AppState.MENU;
+      menuTime = 0;
+      return;
+    }
+    return;
+  }
+  if (state.appState === AppState.LEVEL_SELECT) {
+    const hit = hitTestLevelSelect(px, py, save);
+    if (hit === 'back') {
+      state.appState = AppState.MODE_SELECT;
+      return;
+    }
+    if (typeof hit === 'number') {
+      startChallengeLevel(hit);
+      return;
+    }
     return;
   }
   if (state.appState === AppState.PLAYING) {
+    // Challenge mode overlay interactions
+    if (state.challenge) {
+      const ch = state.challenge;
+      if (ch.phase === ChallengePhase.VICTORY || ch.phase === ChallengePhase.FAILED) {
+        const overlayHit = hitTestChallengeOverlay(px, py);
+        if (overlayHit === 'next_level') {
+          const nextIdx = ch.levelIndex + 1;
+          if (nextIdx < LEVELS.length) {
+            startChallengeLevel(nextIdx, ch.levelResults);
+          }
+          return;
+        }
+        if (overlayHit === 'retry') {
+          startChallengeLevel(ch.levelIndex, ch.levelResults);
+          return;
+        }
+        if (overlayHit === 'level_select') {
+          state.appState = AppState.LEVEL_SELECT;
+          music.stop();
+          audio.updateDangerAlarm(0);
+          menuMusic.start();
+          return;
+        }
+        return; // swallow other taps on overlay
+      }
+    }
     if (renderer.hitTestPauseButton(px, py)) {
       state.appState = AppState.PAUSED;
       music.pause();
       audio.updateDangerAlarm(0);
       return;
     }
-    if (renderer.hitTestAbilityButton(px, py)) {
+    if (!state.challenge && renderer.hitTestAbilityButton(px, py)) {
       inputBuffer.push(InputAction.ABILITY);
       return;
     }
@@ -206,6 +274,8 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.appState === AppState.GAME_OVER) {
+    // Challenge mode failures are handled via ChallengePhase.FAILED in PLAYING state
+    // This is only for endless mode game over
     // Check if share button was tapped
     if (hitRect(px, py, shareButtonRect)) {
       shareScore(state);
@@ -239,6 +309,19 @@ function startGame(): void {
   } else {
     onboardingAge = -1;
   }
+
+  menuMusic.stop();
+  music.start();
+}
+
+function startChallengeLevel(index: number, previousResults?: import('./core/state.js').LevelResult[]): void {
+  const level = LEVELS[index];
+  if (!level) return;
+  inputBuffer.clear();
+  fx.clear();
+  state = createChallengeGameState(Date.now(), level, previousResults);
+  gameOverScoreSaved = false;
+  onboardingAge = -1;
 
   menuMusic.stop();
   music.start();
@@ -433,6 +516,31 @@ function processEvents(): void {
           }
         }
         break;
+      case 'level_clear': {
+        audio.boardClear();
+        const ch = state.challenge;
+        if (ch) {
+          // Save results
+          ch.levelResults.push({ levelIndex: ch.levelIndex, timeMs: ch.elapsedMs, stars: ch.stars });
+          updateChallengeLevel(save, ch.levelIndex, ch.stars, ch.elapsedMs);
+          // Victory FX
+          const cam2 = renderer.getCamera();
+          fx.addComboText(cam2.logicalW / 2, cam2.logicalH / 2 - 40, 'LEVEL CLEAR!');
+          for (let i = 0; i < 12; i++) {
+            fx.addSparkle(
+              cam2.logicalW / 2 + (Math.random() - 0.5) * 150,
+              cam2.logicalH / 2 + (Math.random() - 0.5) * 100,
+              '#44ff88',
+            );
+            fx.addShards(
+              cam2.logicalW / 2 + (Math.random() - 0.5) * 120,
+              cam2.logicalH / 2 + (Math.random() - 0.5) * 80,
+              '#ffcc00', 4,
+            );
+          }
+        }
+        break;
+      }
       case 'milestone':
         // Dramatic milestone announcement
         audio.chain(5); // strong chain sound as fanfare
@@ -591,6 +699,66 @@ function loop(now: number): void {
     const dpr = cam.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     renderer.drawPauseOverlay(ctx, cam);
+  } else if (state.appState === AppState.MODE_SELECT) {
+    menuTime += frameTime;
+    // Run demo in background
+    demoAccumulator += frameTime;
+    while (demoAccumulator >= SIM_DT) {
+      if (demoState.appState === AppState.PLAYING) {
+        demoBotTick(demoState, demoInput);
+        simulateTick(demoState, demoInput);
+        processDemoEvents();
+      } else if (demoState.appState === AppState.GAME_OVER) {
+        resetDemo();
+      }
+      demoAccumulator -= SIM_DT;
+    }
+    demoFx.update(frameTime);
+    const demoAlpha = demoAccumulator / SIM_DT;
+    renderer.render(demoState, demoAlpha, frameTime, true);
+
+    const dpr = cam.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = 'rgba(26,10,46,0.6)';
+    ctx.fillRect(0, 0, cam.logicalW, cam.logicalH);
+    ctx.save();
+    demoFx.render(ctx);
+    ctx.restore();
+    drawModeSelect(ctx, cam.logicalW, cam.logicalH, menuTime);
+
+    if (settingsOpen) {
+      drawSettings(ctx, cam.logicalW, cam.logicalH, save, installAvailable && canInstall());
+    }
+  } else if (state.appState === AppState.LEVEL_SELECT) {
+    menuTime += frameTime;
+    // Run demo in background
+    demoAccumulator += frameTime;
+    while (demoAccumulator >= SIM_DT) {
+      if (demoState.appState === AppState.PLAYING) {
+        demoBotTick(demoState, demoInput);
+        simulateTick(demoState, demoInput);
+        processDemoEvents();
+      } else if (demoState.appState === AppState.GAME_OVER) {
+        resetDemo();
+      }
+      demoAccumulator -= SIM_DT;
+    }
+    demoFx.update(frameTime);
+    const demoAlpha = demoAccumulator / SIM_DT;
+    renderer.render(demoState, demoAlpha, frameTime, true);
+
+    const dpr = cam.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = 'rgba(26,10,46,0.6)';
+    ctx.fillRect(0, 0, cam.logicalW, cam.logicalH);
+    ctx.save();
+    demoFx.render(ctx);
+    ctx.restore();
+    drawLevelSelect(ctx, cam.logicalW, cam.logicalH, save, menuTime);
+
+    if (settingsOpen) {
+      drawSettings(ctx, cam.logicalW, cam.logicalH, save, installAvailable && canInstall());
+    }
   } else if (state.appState === AppState.PLAYING || state.appState === AppState.GAME_OVER) {
     // Apply hit stop time dilation
     let effectiveFrameTime = frameTime;
@@ -606,15 +774,20 @@ function loop(now: number): void {
 
     while (accumulator >= SIM_DT) {
       if (state.appState === AppState.PLAYING) {
-        simulateTick(state, inputBuffer);
+        if (state.challenge) {
+          challengeTick(state, inputBuffer);
+        } else {
+          simulateTick(state, inputBuffer);
+        }
         processEvents();
       }
       accumulator -= SIM_DT;
     }
 
     music.update(frameTime, state.dangerLevel, state.stagePhase === 'pressure', state.chain);
-    // Only run danger alarm during active gameplay
-    if (state.appState === AppState.PLAYING) {
+    // Only run danger alarm during active gameplay (and not during challenge overlays)
+    const challengeActive = state.challenge && (state.challenge.phase === ChallengePhase.PLAYING);
+    if (state.appState === AppState.PLAYING && (!state.challenge || challengeActive)) {
       audio.updateDangerAlarm(state.dangerLevel);
     } else {
       audio.updateDangerAlarm(0);
@@ -624,8 +797,22 @@ function loop(now: number): void {
     const alpha = accumulator / SIM_DT;
     renderer.render(state, alpha, frameTime);
 
-    // Onboarding overlay
-    if (onboardingAge >= 0) {
+    // Challenge mode overlays
+    if (state.challenge) {
+      const dpr = cam.dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const ch = state.challenge;
+      if (ch.phase === ChallengePhase.COUNTDOWN) {
+        drawCountdown(ctx, cam.logicalW, cam.logicalH, ch.countdownTimer);
+      } else if (ch.phase === ChallengePhase.VICTORY) {
+        drawVictoryScreen(ctx, cam.logicalW, cam.logicalH, state, menuTime);
+      } else if (ch.phase === ChallengePhase.FAILED) {
+        drawFailedScreen(ctx, cam.logicalW, cam.logicalH, state);
+      }
+    }
+
+    // Onboarding overlay (endless only)
+    if (!state.challenge && onboardingAge >= 0) {
       const dpr = cam.dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const showing = drawOnboarding(ctx, cam.logicalW, cam.logicalH, now, onboardingAge);
@@ -633,8 +820,8 @@ function loop(now: number): void {
       if (!showing) onboardingAge = -1;
     }
 
-    // Game over overlay with stats
-    if (state.appState === AppState.GAME_OVER) {
+    // Game over overlay with stats (endless mode only)
+    if (state.appState === AppState.GAME_OVER && !state.challenge) {
       drawGameOverStats(ctx, cam, state);
     }
   }

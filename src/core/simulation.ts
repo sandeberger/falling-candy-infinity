@@ -47,17 +47,20 @@ export function simulateTick(state: GameState, input: InputBuffer): void {
     if (state.reliefTimer <= 0) state.reliefMultiplier = 1.0;
   }
 
-  // Survival bonus: every 10 seconds, award points based on stage
-  const prevSec = Math.floor((state.playTimeMs - dt) / 10000);
-  const currSec = Math.floor(state.playTimeMs / 10000);
-  if (currSec > prevSec) {
-    const survivalBonus = 5 * (state.stage + 1);
-    state.score += survivalBonus;
-  }
+  // Skip endless-only mechanics in challenge mode
+  if (!state.challenge) {
+    // Survival bonus: every 10 seconds, award points based on stage
+    const prevSec = Math.floor((state.playTimeMs - dt) / 10000);
+    const currSec = Math.floor(state.playTimeMs / 10000);
+    if (currSec > prevSec) {
+      const survivalBonus = 5 * (state.stage + 1);
+      state.score += survivalBonus;
+    }
 
-  // Stage tick counter + phase transitions
-  state.ticksInStage++;
-  updateStagePhase(state);
+    // Stage tick counter + phase transitions
+    state.ticksInStage++;
+    updateStagePhase(state);
+  }
 
   // Ability active state
   if (state.playState === PlayState.ABILITY_ACTIVE) {
@@ -309,11 +312,13 @@ function handleMatching(state: GameState): void {
       emit(state, { type: 'bomb_explode', row: bomb.row, col: bomb.col, count: destroyed });
     }
 
-    // Charge ability from chains
-    state.abilityCharge = Math.min(1.0, state.abilityCharge + 0.08 * state.chain);
-    if (state.abilityCharge >= 1.0 && !state.abilityReady) {
-      state.abilityReady = true;
-      emit(state, { type: 'ability_ready' });
+    // Charge ability from chains (endless mode only)
+    if (!state.challenge) {
+      state.abilityCharge = Math.min(1.0, state.abilityCharge + 0.08 * state.chain);
+      if (state.abilityCharge >= 1.0 && !state.abilityReady) {
+        state.abilityReady = true;
+        emit(state, { type: 'ability_ready' });
+      }
     }
 
     state.clearTimer = CLEAR_DURATION_MS;

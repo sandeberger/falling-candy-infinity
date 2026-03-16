@@ -28,6 +28,8 @@ export enum AppState {
   PLAYING,
   PAUSED,
   GAME_OVER,
+  MODE_SELECT,
+  LEVEL_SELECT,
 }
 
 export enum PlayState {
@@ -75,7 +77,7 @@ export type GameEventType =
   | 'game_over' | 'stage_up' | 'board_clear'
   | 'bomb_explode' | 'jelly_clear' | 'unlock' | 'crack'
   | 'ability_activate' | 'ability_ready' | 'danger'
-  | 'milestone' | 'phase_change';
+  | 'milestone' | 'phase_change' | 'level_clear';
 
 export interface GameEvent {
   type: GameEventType;
@@ -87,12 +89,31 @@ export interface GameEvent {
   text?: string;
 }
 
+export enum GameMode { ENDLESS, CHALLENGE }
+export enum ChallengePhase { COUNTDOWN, PLAYING, VICTORY, LEVEL_RESULTS, FAILED }
+
+export interface LevelResult { levelIndex: number; timeMs: number; stars: number; }
+
+export interface ChallengeState {
+  mode: GameMode;
+  levelIndex: number;
+  phase: ChallengePhase;
+  countdownTimer: number;
+  elapsedMs: number;
+  targetCandyIds: Set<number>;
+  targetCandyCount: number;
+  remainingTargets: number;
+  stars: number;
+  levelResults: LevelResult[];
+}
+
 export interface GameState {
   board: (Candy | null)[];
   active: Formation | null;
   next: Formation;
   playState: PlayState;
   appState: AppState;
+  challenge?: ChallengeState;
   score: number;
   chain: number;
   fallSpeed: number;

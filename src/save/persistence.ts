@@ -11,7 +11,11 @@ export interface SaveData {
   musicEnabled: boolean;
   hapticsEnabled: boolean;
   installPromptDismissed: boolean;
+  challengeStars: number[];
+  challengeBestTimes: number[];
 }
+
+const LEVEL_COUNT = 20;
 
 const DEFAULT_SAVE: SaveData = {
   version: 1,
@@ -24,6 +28,8 @@ const DEFAULT_SAVE: SaveData = {
   musicEnabled: true,
   hapticsEnabled: true,
   installPromptDismissed: false,
+  challengeStars: new Array(LEVEL_COUNT).fill(0),
+  challengeBestTimes: new Array(LEVEL_COUNT).fill(0),
 };
 
 export function loadSave(): SaveData {
@@ -51,4 +57,26 @@ export function updateHighScores(save: SaveData, score: number, stage: number, c
   if (stage > save.bestStage) save.bestStage = stage;
   if (chain > save.bestChain) save.bestChain = chain;
   writeSave(save);
+}
+
+export function updateChallengeLevel(save: SaveData, levelIndex: number, stars: number, timeMs: number): void {
+  if (!save.challengeStars || save.challengeStars.length < LEVEL_COUNT) {
+    save.challengeStars = new Array(LEVEL_COUNT).fill(0);
+  }
+  if (!save.challengeBestTimes || save.challengeBestTimes.length < LEVEL_COUNT) {
+    save.challengeBestTimes = new Array(LEVEL_COUNT).fill(0);
+  }
+  if (stars > save.challengeStars[levelIndex]) {
+    save.challengeStars[levelIndex] = stars;
+  }
+  if (save.challengeBestTimes[levelIndex] === 0 || timeMs < save.challengeBestTimes[levelIndex]) {
+    save.challengeBestTimes[levelIndex] = timeMs;
+  }
+  writeSave(save);
+}
+
+export function isLevelUnlocked(save: SaveData, levelIndex: number): boolean {
+  if (levelIndex === 0) return true;
+  if (!save.challengeStars || save.challengeStars.length < levelIndex) return false;
+  return save.challengeStars[levelIndex - 1] >= 1;
 }
