@@ -447,15 +447,18 @@ export class Canvas2DRenderer implements Renderer {
       case CandyType.STANDARD:
         this.drawStandardCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.color);
         this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
+        this.drawRandomGlare(ctx, x, y, size, candy.id);
         break;
 
       case CandyType.JELLY:
         this.drawJellyCandy(ctx, x, y, size, r, baseColor, lightColor, candy.id);
+        this.drawRandomGlare(ctx, x, y, size, candy.id);
         break;
 
       case CandyType.STICKY:
         this.drawStickyCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.stickyBonds ?? 0, candy.color);
         this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
+        this.drawRandomGlare(ctx, x, y, size, candy.id);
         break;
 
       case CandyType.BOMB:
@@ -473,6 +476,7 @@ export class Canvas2DRenderer implements Renderer {
       case CandyType.CRACKED:
         this.drawCrackedCandy(ctx, x, y, size, r, baseColor, lightColor, darkColor, candy.crackHits ?? 2, candy.color);
         this.drawHighlightDrift(ctx, x, y, size, candy.id, candy.color);
+        this.drawRandomGlare(ctx, x, y, size, candy.id);
         break;
     }
   }
@@ -1218,6 +1222,51 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
     ctx.ellipse(gx, gy, size * 0.13, size * 0.07, phase * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /** Brief bright star-shaped glare — like light catching a shiny surface */
+  private drawRandomGlare(
+    ctx: CanvasRenderingContext2D, x: number, y: number, size: number, candyId: number,
+  ): void {
+    // Per-candy phase using golden ratio for even staggering
+    // dangerPulse grows ~4/s; * 0.05 → one full cycle every ~5 seconds
+    const phase = this.dangerPulse * 0.05 + candyId * 1.618033988749;
+    // Wrap to [0,1) cycle
+    const cycle = phase - Math.floor(phase);
+    // Glare is bright only in a narrow ~6% window (~0.3s flash per 5s cycle)
+    if (cycle > 0.06) return;
+    // Intensity ramps up then down within the window
+    const t = cycle / 0.06; // 0→1 within the active window
+    const intensity = Math.sin(t * Math.PI); // smooth bell curve
+    if (intensity < 0.01) return;
+
+    const alpha = 0.7 + intensity * 0.25;
+    const starSize = size * (0.12 + intensity * 0.10);
+    // Position in upper-left gloss area
+    const gx = x + size * 0.32;
+    const gy = y + size * 0.28;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Soft radial glow behind the star (bigger bloom)
+    const glowR = starSize * 3.5;
+    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, glowR);
+    glow.addColorStop(0, `rgba(255,255,255,${0.5 * intensity})`);
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(gx - glowR, gy - glowR, glowR * 2, glowR * 2);
+
+    // 4-pointed star: two crossing thin ellipses
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, starSize, starSize * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, starSize * 0.15, starSize, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
